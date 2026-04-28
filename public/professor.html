@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FLIPED — Baixar Folha do Aluno</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+:root {
+  --ink: #0f172a;
+  --binding-blue: #1e40af;
+  --binding-blue-light: #dbeafe;
+  --chalk-gray: #64748b;
+  --notebook-line: #e2e8f0;
+  --paper-white: #ffffff;
+  --page-cream: #f8fafc;
+  --pencil-green: #15803d;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--page-cream); color: var(--ink);
+  min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+}
+header {
+  width: 100%; background: var(--binding-blue); padding: 16px 24px;
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+}
+header h1 { color: #fff; font-size: 18px; font-weight: 700; }
+header span { color: rgba(255,255,255,.7); font-size: 13px; }
+.container { width: 100%; max-width: 480px; padding: 24px 20px; }
+.step {
+  background: var(--paper-white); border: 1px solid var(--notebook-line);
+  border-radius: 10px; padding: 20px; margin-bottom: 16px;
+}
+.step-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 50%; background: var(--binding-blue);
+  color: #fff; font-size: 13px; font-weight: 700; margin-right: 8px;
+}
+.step-title { font-size: 14px; font-weight: 600; display: inline; vertical-align: middle; }
+.step-body { margin-top: 14px; }
+select {
+  width: 100%; padding: 12px 14px; border: 1px solid var(--notebook-line);
+  border-radius: 8px; font-size: 15px; font-family: inherit; outline: none;
+  background: var(--paper-white); -webkit-appearance: none; appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2364748b' fill='none' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 14px center;
+}
+select:focus { border-color: var(--binding-blue); }
+select:disabled { opacity: .5; cursor: not-allowed; }
+.student-card {
+  display: none; background: var(--binding-blue-light); border: 1px solid var(--binding-blue);
+  border-radius: 10px; padding: 20px; text-align: center;
+}
+.student-card.show { display: block; }
+.student-name { font-size: 20px; font-weight: 700; color: var(--binding-blue); margin-bottom: 4px; }
+.student-info { font-size: 13px; color: var(--chalk-gray); margin-bottom: 6px; }
+.student-code {
+  display: inline-block; background: var(--ink); color: #fff; padding: 4px 12px;
+  border-radius: 4px; font-family: monospace; font-size: 12px; font-weight: 700;
+  letter-spacing: 1px; margin-bottom: 16px;
+}
+.btn-download {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 14px 32px; background: var(--binding-blue); color: #fff;
+  border: none; border-radius: 8px; font-size: 16px; font-weight: 600;
+  cursor: pointer; transition: all .15s; font-family: inherit;
+}
+.btn-download:hover { background: #1d4ed8; transform: translateY(-1px); }
+.btn-all {
+  display: block; width: 100%; padding: 12px; margin-top: 12px;
+  background: var(--paper-white); border: 2px solid var(--binding-blue);
+  color: var(--binding-blue); border-radius: 8px; font-size: 14px;
+  font-weight: 600; cursor: pointer; font-family: inherit; transition: all .15s;
+}
+.btn-all:hover { background: var(--binding-blue-light); }
+.info-box {
+  background: var(--paper-white); border: 1px solid var(--notebook-line);
+  border-radius: 10px; padding: 16px; margin-top: 16px;
+}
+.info-box h4 { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.info-box p { font-size: 12px; color: var(--chalk-gray); line-height: 1.5; }
+.empty-msg {
+  text-align: center; padding: 30px; color: var(--chalk-gray); font-size: 14px;
+}
+.empty-msg strong { display: block; font-size: 15px; color: var(--ink); margin-bottom: 6px; }
+
+/* Upload section */
+.upload-section { margin-top: 16px; }
+.upload-tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+.upload-tab {
+  flex: 1; padding: 10px; border: 1px solid var(--notebook-line); background: var(--paper-white);
+  border-radius: 8px 8px 0 0; font-size: 13px; font-weight: 600; cursor: pointer;
+  color: var(--chalk-gray); text-align: center; font-family: inherit; transition: all .15s;
+}
+.upload-tab.active { color: var(--binding-blue); border-bottom: 2px solid var(--binding-blue); background: #eff6ff; }
+.upload-zone {
+  border: 2px dashed var(--notebook-line); border-radius: 8px;
+  padding: 28px 16px; text-align: center; cursor: pointer; transition: all .2s;
+}
+.upload-zone:hover, .upload-zone.dragover { border-color: var(--binding-blue); background: #eff6ff; }
+.upload-zone-icon { font-size: 32px; margin-bottom: 6px; }
+.upload-zone-text { font-size: 13px; color: var(--chalk-gray); }
+.upload-zone-text strong { color: var(--binding-blue); }
+.upload-preview { margin-top: 10px; }
+.upload-preview-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; background: #f0fdf4; border: 1px solid #bbf7d0;
+  border-radius: 6px; margin-bottom: 6px; font-size: 13px;
+}
+.upload-preview-item .remove { background: none; border: none; color: #ef4444; cursor: pointer; font-size: 16px; }
+.btn-upload {
+  display: block; width: 100%; padding: 12px; margin-top: 10px;
+  background: #15803d; color: #fff; border: none; border-radius: 8px;
+  font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit;
+}
+.btn-upload:hover { background: #166534; }
+.btn-upload:disabled { opacity: .5; cursor: not-allowed; }
+.text-area {
+  width: 100%; min-height: 100px; padding: 10px 12px; border: 1px solid var(--notebook-line);
+  border-radius: 6px; font-size: 13px; font-family: inherit; outline: none; resize: vertical;
+  line-height: 1.6; margin-top: 8px;
+}
+.text-area:focus { border-color: var(--binding-blue); }
+.upload-success { background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 14px; text-align: center; color: #15803d; font-weight: 600; margin-top: 10px; }
+
+footer { margin-top: auto; padding: 20px; text-align: center; font-size: 12px; color: var(--chalk-gray); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📚 FLIPED</h1>
+  <span>Folha de Desenho & Upload</span>
+</header>
+
+<div class="container">
+  <div class="step">
+    <span class="step-num">1</span>
+    <span class="step-title">Escolha a unidade</span>
+    <div class="step-body">
+      <select id="selUnit" onchange="onUnitChange()">
+        <option value="">Selecione a unidade...</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="step">
+    <span class="step-num">2</span>
+    <span class="step-title">Escolha a turma</span>
+    <div class="step-body">
+      <select id="selTurma" disabled onchange="onTurmaChange()">
+        <option value="">Selecione a turma...</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="step">
+    <span class="step-num">3</span>
+    <span class="step-title">Escolha o aluno</span>
+    <div class="step-body">
+      <select id="selAluno" disabled onchange="onAlunoChange()">
+        <option value="">Selecione o aluno...</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="student-card" id="studentCard">
+    <div class="student-name" id="cardName"></div>
+    <div class="student-info" id="cardInfo"></div>
+    <div class="student-code" id="cardCode"></div>
+    <br>
+    <button class="btn-download" onclick="downloadPDF()">📄 Baixar Folha de Desenho</button>
+    <button class="btn-all" id="btnAll" onclick="downloadAllTurma()">📋 Baixar TODAS da turma (PDF único)</button>
+  </div>
+
+  <!-- UPLOAD SECTION -->
+  <div class="step upload-section" id="uploadSection" style="display:none">
+    <span class="step-num">4</span>
+    <span class="step-title">Enviar desenho + história</span>
+    <div class="step-body">
+      <div class="upload-tabs">
+        <button class="upload-tab active" onclick="setUploadMode('individual')">📷 Individual</button>
+        <button class="upload-tab" onclick="setUploadMode('lote')">📦 Em lote (turma)</button>
+      </div>
+
+      <!-- Individual upload -->
+      <div id="uploadIndividual">
+        <div id="uploadIndivTarget" style="font-size:13px;font-weight:600;color:var(--binding-blue);margin-bottom:8px"></div>
+        <div class="upload-zone" id="dropZoneIndiv" onclick="document.getElementById('fileIndiv').click()">
+          <div class="upload-zone-icon">📸</div>
+          <div class="upload-zone-text" id="fileIndivLabel">Clique ou arraste o <strong>desenho escaneado</strong></div>
+          <input type="file" id="fileIndiv" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="onIndivFile(this)">
+        </div>
+        <label style="font-size:12px;font-weight:600;color:var(--chalk-gray);display:block;margin-top:10px">📝 Texto da história</label>
+        <textarea class="text-area" id="textIndiv" placeholder="Digite ou cole o texto da história do aluno..."></textarea>
+        <button class="btn-upload" id="btnUploadIndiv" onclick="doUploadIndiv()" disabled>✓ Enviar desenho + texto</button>
+        <div class="upload-success" id="successIndiv" style="display:none">✓ Enviado com sucesso!</div>
+      </div>
+
+      <!-- Batch upload -->
+      <div id="uploadLote" style="display:none">
+        <p style="font-size:12px;color:var(--chalk-gray);margin-bottom:10px">Selecione vários arquivos de uma vez. Cada arquivo será vinculado ao aluno pelo nome do arquivo ou sequência.</p>
+        <div class="upload-zone" id="dropZoneLote" onclick="document.getElementById('fileLote').click()">
+          <div class="upload-zone-icon">📦</div>
+          <div class="upload-zone-text">Clique ou arraste <strong>vários arquivos</strong> da turma</div>
+          <input type="file" id="fileLote" accept=".pdf,.jpg,.jpeg,.png" style="display:none" multiple onchange="onLoteFiles(this)">
+        </div>
+        <div class="upload-preview" id="lotePreview"></div>
+        <button class="btn-upload" id="btnUploadLote" onclick="doUploadLote()" disabled>✓ Enviar todos</button>
+        <div class="upload-success" id="successLote" style="display:none"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="info-box">
+    <h4>📌 Como funciona a identificação</h4>
+    <p>Cada folha tem um <strong>código único</strong> no rodapé (ex: COC-LF-3ANOA-007) e um <strong>QR Code grande</strong> no canto. Quando vocês escanearem as folhas em lote, o sistema lê o QR Code e identifica automaticamente o aluno, turma e unidade.</p>
+  </div>
+
+  <div class="empty-msg" id="emptyMsg" style="display:none">
+    <strong>Nenhum aluno cadastrado ainda</strong>
+    Peça ao coordenador para importar a lista de alunos no sistema principal.
+  </div>
+</div>
+
+<footer>Grupo PED — FLIPED 2026</footer>
+
+<div id="qr-temp" style="position:absolute;left:-9999px;top:-9999px"></div>
+
+<script>
+const UNITS = [
+  { id: 'coc-lauro', name: 'COC Lauro de Freitas', short: 'COC-LF', color: '#dc2626' },
+  { id: 'coc-horto', name: 'COC Horto Florestal', short: 'COC-HF', color: '#ea580c' },
+  { id: 'ped-imbui', name: 'PED Imbuí', short: 'PED-IMB', color: '#2563eb' },
+  { id: 'ped-cajazeiras', name: 'PED Cajazeiras', short: 'PED-CAJ', color: '#7c3aed' },
+  { id: 'ped-lauro', name: 'PED Lauro de Freitas', short: 'PED-LF', color: '#0891b2' },
+  { id: 'anglo-lauro', name: 'Anglo Lauro de Freitas', short: 'ANG-LF', color: '#15803d' },
+  { id: 'ped-pituba', name: 'PED Pituba', short: 'PED-PIT', color: '#b45309' },
+];
+
+let students = JSON.parse(localStorage.getItem('em_students') || '[]');
+let selectedStudent = null;
+
+function genCode(s) {
+  const u = UNITS.find(x => x.id === s.unit);
+  const unitShort = u ? u.short : 'PED';
+  const turmaClean = s.turma.replace(/[ºª°\s]/g, '').toUpperCase();
+  const allInTurma = students.filter(x => x.unit === s.unit && x.turma === s.turma).sort((a,b) => a.name.localeCompare(b.name));
+  const seq = String(allInTurma.findIndex(x => x.id === s.id) + 1).padStart(3, '0');
+  return `${unitShort}-${turmaClean}-${seq}`;
+}
+
+async function seedStudents() {
+  if (students.length > 0) return;
+  try {
+    const res = await fetch('alunos_seed.json');
+    if (!res.ok) return;
+    const data = await res.json();
+    data.forEach(s => {
+      students.push({
+        id: crypto.randomUUID(), name: s.name, turma: s.turma, unit: s.unit,
+        status: 'pending', pdfGenerated: false, uploadedAt: null,
+        storyText: '', textReviewed: false, hasDrawing: false
+      });
+    });
+    localStorage.setItem('em_students', JSON.stringify(students));
+    console.log(`Seed: ${data.length} alunos carregados`);
+  } catch(e) { console.log('Seed não disponível:', e); }
+}
+
+async function init() {
+  await seedStudents();
+  const sel = document.getElementById('selUnit');
+  UNITS.forEach(u => {
+    const count = students.filter(s => s.unit === u.id).length;
+    if (count > 0) {
+      const opt = document.createElement('option');
+      opt.value = u.id;
+      opt.textContent = `${u.name} (${count} alunos)`;
+      sel.appendChild(opt);
+    }
+  });
+  if (!students.length) document.getElementById('emptyMsg').style.display = 'block';
+}
+
+function onUnitChange() {
+  const unit = document.getElementById('selUnit').value;
+  const selTurma = document.getElementById('selTurma');
+  const selAluno = document.getElementById('selAluno');
+  selTurma.innerHTML = '<option value="">Selecione a turma...</option>';
+  selAluno.innerHTML = '<option value="">Selecione o aluno...</option>';
+  selAluno.disabled = true;
+  document.getElementById('studentCard').classList.remove('show');
+  if (!unit) { selTurma.disabled = true; return; }
+  const turmas = [...new Set(students.filter(s => s.unit === unit).map(s => s.turma))].sort();
+  turmas.forEach(t => {
+    const c = students.filter(s => s.unit === unit && s.turma === t).length;
+    const opt = document.createElement('option');
+    opt.value = t; opt.textContent = `${t} (${c} alunos)`;
+    selTurma.appendChild(opt);
+  });
+  selTurma.disabled = false;
+}
+
+function onTurmaChange() {
+  const unit = document.getElementById('selUnit').value;
+  const turma = document.getElementById('selTurma').value;
+  const selAluno = document.getElementById('selAluno');
+  selAluno.innerHTML = '<option value="">Selecione o aluno...</option>';
+  document.getElementById('studentCard').classList.remove('show');
+  if (!turma) { selAluno.disabled = true; return; }
+  const alunos = students.filter(s => s.unit === unit && s.turma === turma).sort((a,b) => a.name.localeCompare(b.name));
+  alunos.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.id; opt.textContent = s.name;
+    selAluno.appendChild(opt);
+  });
+  selAluno.disabled = false;
+}
+
+function onAlunoChange() {
+  const id = document.getElementById('selAluno').value;
+  if (!id) { document.getElementById('studentCard').classList.remove('show'); return; }
+  selectedStudent = students.find(s => s.id === id);
+  const u = UNITS.find(x => x.id === selectedStudent.unit);
+  document.getElementById('cardName').textContent = selectedStudent.name;
+  document.getElementById('cardInfo').textContent = `${selectedStudent.turma} — ${u ? u.name : ''}`;
+  document.getElementById('cardCode').textContent = genCode(selectedStudent);
+  const turmaCount = students.filter(s => s.unit === selectedStudent.unit && s.turma === selectedStudent.turma).length;
+  document.getElementById('btnAll').textContent = `📋 Baixar TODAS as ${turmaCount} folhas da turma (PDF único)`;
+  document.getElementById('studentCard').classList.add('show');
+}
+
+// ═══ PDF GENERATION ═══
+async function buildPage(doc, s, pageNum, totalPages) {
+  const u = UNITS.find(x => x.id === s.unit);
+  const code = genCode(s);
+  const W = 210, H = 297, m = 12;
+
+  // ── HEADER BAR (azul)
+  doc.setFillColor(30, 64, 175);
+  doc.rect(0, 0, W, 20, 'F');
+  doc.setTextColor(255); doc.setFontSize(10); doc.setFont('helvetica', 'bold');
+  doc.text('FLIPED — GRUPO PED', m, 9);
+  doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+  doc.text(u ? u.name.toUpperCase() : '', W - m, 9, { align: 'right' });
+  doc.text(`Folha ${pageNum}/${totalPages} | Fotografe esta folha depois de pronta`, W - m, 15, { align: 'right' });
+
+  // ── DADOS DO ALUNO
+  doc.setTextColor(15, 23, 42);
+  doc.setFontSize(13); doc.setFont('helvetica', 'bold');
+  doc.text('AUTOR(A):', m, 30);
+  doc.setFont('helvetica', 'normal');
+  doc.text(s.name.toUpperCase(), 44, 30);
+
+  doc.setFontSize(10); doc.setFont('helvetica', 'bold');
+  doc.text('TURMA:', m, 38);
+  doc.setFont('helvetica', 'normal'); doc.text(s.turma, 32, 38);
+  doc.setFont('helvetica', 'bold'); doc.text('UNIDADE:', 85, 38);
+  doc.setFont('helvetica', 'normal'); doc.text(u ? u.name : '', 110, 38);
+
+  // ── CÓDIGO visível (lado direito)
+  doc.setFillColor(15, 23, 42);
+  doc.roundedRect(W - m - 52, 24, 52, 18, 2, 2, 'F');
+  doc.setTextColor(255); doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+  doc.text(code, W - m - 26, 33, { align: 'center' });
+  doc.setFontSize(6); doc.setFont('helvetica', 'normal');
+  doc.text('CÓDIGO IDENTIFICAÇÃO', W - m - 26, 39, { align: 'center' });
+
+  // ── Linha separadora
+  doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3);
+  doc.line(m, 44, W - m, 44);
+
+  // ── TÍTULO
+  doc.setTextColor(15, 23, 42); doc.setFontSize(10); doc.setFont('helvetica', 'bold');
+  doc.text('TÍTULO DA HISTÓRIA:', m, 52);
+  doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.5);
+  doc.line(60, 52, W - m, 52);
+
+  // ── ÁREA DE DESENHO
+  const dT = 58, dB = 210;
+  doc.setDrawColor(30, 64, 175); doc.setLineWidth(0.8);
+  doc.setLineDashPattern([3, 2], 0);
+  doc.roundedRect(m, dT, W - 2 * m, dB - dT, 2, 2, 'S');
+  doc.setLineDashPattern([], 0);
+
+  // área limpa para desenho
+
+  // ── LINHAS PARA TEXTO
+  doc.setTextColor(15, 23, 42); doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+  doc.text('MINHA HISTÓRIA:', m, 216);
+  doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.3);
+  let ly = 222;
+  for (let i = 0; i < 6; i++) { doc.line(m, ly, W - m, ly); ly += 7; }
+
+  // ══════════════════════════════════════
+  // ── FAIXA DE IDENTIFICAÇÃO (rodapé) ──
+  // ══════════════════════════════════════
+  const footY = H - 30;
+
+  // Fundo cinza escuro
+  doc.setFillColor(15, 23, 42);
+  doc.rect(0, footY, W, 30, 'F');
+
+  // Texto de identificação grande
+  doc.setTextColor(255); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+  doc.text(code, m, footY + 12);
+
+  doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+  doc.text(s.name, m, footY + 19);
+  doc.text(`${s.turma} | ${u ? u.name : ''} | Grupo PED 2026`, m, footY + 25);
+
+  // Linha separadora vertical antes do QR
+  doc.setDrawColor(100, 116, 139); doc.setLineWidth(0.3);
+  doc.line(W - 45, footY + 3, W - 45, footY + 27);
+
+  // QR Code
+  const qrDiv = document.getElementById('qr-temp');
+  qrDiv.innerHTML = '';
+  const qrPayload = JSON.stringify({
+    code: code,
+    id: s.id,
+    name: s.name,
+    turma: s.turma,
+    unit: s.unit,
+    unitName: u ? u.name : ''
+  });
+  new QRCode(qrDiv, { text: qrPayload, width: 256, height: 256, colorDark: '#ffffff', colorLight: '#0f172a', correctLevel: QRCode.CorrectLevel.M });
+  await new Promise(r => setTimeout(r, 250));
+  const qrCanvas = qrDiv.querySelector('canvas');
+  if (qrCanvas) {
+    doc.addImage(qrCanvas.toDataURL('image/png'), 'PNG', W - 40, footY + 2, 26, 26);
+  }
+
+  // Texto ao lado do QR "ESCANEIE"
+  doc.setFontSize(5); doc.setTextColor(150, 160, 175);
+  doc.text('ESCANEIE PARA', W - 27, footY + 7, { align: 'center' });
+  doc.text('IDENTIFICAR', W - 27, footY + 10, { align: 'center' });
+
+  // Mark generated
+  const idx = students.findIndex(x => x.id === s.id);
+  if (idx >= 0) students[idx].pdfGenerated = true;
+  localStorage.setItem('em_students', JSON.stringify(students));
+}
+
+async function downloadPDF() {
+  if (!selectedStudent) return;
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  await buildPage(doc, selectedStudent, 1, 1);
+  doc.save(`Folha_${selectedStudent.name.replace(/\s+/g, '_')}_${genCode(selectedStudent)}.pdf`);
+}
+
+async function downloadAllTurma() {
+  if (!selectedStudent) return;
+  const turmaStudents = students
+    .filter(s => s.unit === selectedStudent.unit && s.turma === selectedStudent.turma)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  if (!confirm(`Baixar PDF com ${turmaStudents.length} folhas da turma ${selectedStudent.turma}?`)) return;
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+  for (let i = 0; i < turmaStudents.length; i++) {
+    if (i > 0) doc.addPage();
+    await buildPage(doc, turmaStudents[i], i + 1, turmaStudents.length);
+  }
+
+  const u = UNITS.find(x => x.id === selectedStudent.unit);
+  const fname = `Turma_${selectedStudent.turma.replace(/\s+/g, '_')}_${u ? u.short : 'PED'}_Todas_Folhas.pdf`;
+  doc.save(fname);
+}
+
+// ═══ UPLOAD FUNCTIONS ═══
+let uploadMode = 'individual';
+let indivFileReady = false;
+let loteFiles = [];
+
+function setUploadMode(mode) {
+  uploadMode = mode;
+  document.querySelectorAll('.upload-tab').forEach((t, i) => {
+    t.classList.toggle('active', (i === 0 && mode === 'individual') || (i === 1 && mode === 'lote'));
+  });
+  document.getElementById('uploadIndividual').style.display = mode === 'individual' ? '' : 'none';
+  document.getElementById('uploadLote').style.display = mode === 'lote' ? '' : 'none';
+}
+
+function showUploadSection() {
+  const sec = document.getElementById('uploadSection');
+  if (!selectedStudent) { sec.style.display = 'none'; return; }
+  sec.style.display = '';
+  document.getElementById('uploadIndivTarget').textContent = `Aluno: ${selectedStudent.name} — ${selectedStudent.turma}`;
+  document.getElementById('textIndiv').value = selectedStudent.storyText || '';
+  document.getElementById('fileIndivLabel').textContent = selectedStudent.hasDrawing
+    ? '✓ Desenho já enviado — clique para substituir' : 'Clique ou arraste o desenho escaneado';
+  indivFileReady = false;
+  document.getElementById('fileIndiv').value = '';
+  document.getElementById('successIndiv').style.display = 'none';
+  updateIndivBtn();
+}
+
+function onIndivFile(input) {
+  if (input.files.length) {
+    indivFileReady = true;
+    document.getElementById('fileIndivLabel').textContent = `✓ ${input.files[0].name}`;
+  }
+  updateIndivBtn();
+}
+
+function updateIndivBtn() {
+  const hasText = document.getElementById('textIndiv').value.trim().length > 0;
+  document.getElementById('btnUploadIndiv').disabled = !(indivFileReady || hasText);
+}
+
+async function doUploadIndiv() {
+  if (!selectedStudent) return;
+  const text = document.getElementById('textIndiv').value.trim();
+  const s = students.find(x => x.id === selectedStudent.id);
+  if (!s) return;
+  const fileInput = document.getElementById('fileIndiv');
+  const btn = document.getElementById('btnUploadIndiv');
+  const successEl = document.getElementById('successIndiv');
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Enviando ao Google Drive...';
+
+  try {
+    // Upload para Google Drive via servidor
+    if (indivFileReady && fileInput.files.length) {
+      const u = UNITS.find(x => x.id === s.unit);
+      const formData = new FormData();
+      formData.append('file', fileInput.files[0]);
+      formData.append('studentName', s.name);
+      formData.append('studentId', s.id);
+      formData.append('turma', s.turma);
+      formData.append('unitName', u ? u.name : s.unit);
+      formData.append('storyText', text);
+
+      const res = await fetch('/api/upload', { method: 'POST', body: formData });
+      const data = await res.json();
+
+      if (data.success) {
+        s.hasDrawing = true;
+        s.driveFileId = data.file.id;
+        s.driveLink = data.file.link;
+      } else {
+        throw new Error(data.error || 'Falha no upload');
+      }
+    }
+
+    if (text) s.storyText = text;
+    if (s.hasDrawing || s.storyText) { s.status = 'done'; s.uploadedAt = new Date().toISOString(); }
+    localStorage.setItem('em_students', JSON.stringify(students));
+    successEl.textContent = '✓ Enviado com sucesso ao Google Drive!';
+    successEl.style.display = '';
+    setTimeout(() => { successEl.style.display = 'none'; }, 4000);
+  } catch (e) {
+    // Fallback: salva localmente se Drive não disponível
+    if (indivFileReady) s.hasDrawing = true;
+    if (text) s.storyText = text;
+    if (s.hasDrawing || s.storyText) { s.status = 'done'; s.uploadedAt = new Date().toISOString(); }
+    localStorage.setItem('em_students', JSON.stringify(students));
+    successEl.textContent = e.message.includes('503') || e.message.includes('não configurado')
+      ? '⚠ Google Drive não configurado — salvo localmente'
+      : '⚠ ' + e.message + ' — salvo localmente';
+    successEl.style.display = '';
+    successEl.style.background = '#fef3c7'; successEl.style.color = '#92400e';
+    setTimeout(() => { successEl.style.display = 'none'; successEl.style.background = ''; successEl.style.color = ''; }, 5000);
+  }
+  btn.textContent = '✓ Enviar desenho + texto';
+}
+
+function onLoteFiles(input) {
+  loteFiles = Array.from(input.files);
+  renderLotePreview();
+}
+
+function renderLotePreview() {
+  const el = document.getElementById('lotePreview');
+  if (!loteFiles.length) { el.innerHTML = ''; document.getElementById('btnUploadLote').disabled = true; return; }
+  el.innerHTML = loteFiles.map((f, i) => `
+    <div class="upload-preview-item">
+      <span>📄 ${f.name}</span>
+      <button class="remove" onclick="removeLoteFile(${i})">&times;</button>
+    </div>
+  `).join('');
+  document.getElementById('btnUploadLote').disabled = false;
+}
+
+function removeLoteFile(idx) {
+  loteFiles.splice(idx, 1);
+  renderLotePreview();
+}
+
+async function doUploadLote() {
+  if (!selectedStudent || !loteFiles.length) return;
+  const turmaStudents = students
+    .filter(s => s.unit === selectedStudent.unit && s.turma === selectedStudent.turma)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const btn = document.getElementById('btnUploadLote');
+  const el = document.getElementById('successLote');
+  btn.disabled = true;
+  btn.textContent = `⏳ Enviando ${loteFiles.length} arquivo(s) ao Google Drive...`;
+
+  try {
+    const u = UNITS.find(x => x.id === selectedStudent.unit);
+    const formData = new FormData();
+    const ids = [];
+    loteFiles.forEach((f, i) => {
+      formData.append('files', f);
+      ids.push(i < turmaStudents.length ? turmaStudents[i].id : `extra_${i}`);
+    });
+    formData.append('turma', selectedStudent.turma);
+    formData.append('unitName', u ? u.name : selectedStudent.unit);
+    formData.append('studentIds', JSON.stringify(ids));
+
+    const res = await fetch('/api/upload-batch', { method: 'POST', body: formData });
+    const data = await res.json();
+
+    if (data.success) {
+      data.files.forEach((f, i) => {
+        if (i < turmaStudents.length) {
+          turmaStudents[i].hasDrawing = true;
+          turmaStudents[i].status = 'done';
+          turmaStudents[i].uploadedAt = new Date().toISOString();
+          turmaStudents[i].driveFileId = f.fileId;
+          turmaStudents[i].driveLink = f.link;
+        }
+      });
+      localStorage.setItem('em_students', JSON.stringify(students));
+      el.textContent = `✓ ${data.uploaded} arquivo(s) enviados ao Google Drive — turma ${selectedStudent.turma}`;
+      el.style.display = '';
+    } else {
+      throw new Error(data.error);
+    }
+  } catch (e) {
+    // Fallback local
+    let matched = 0;
+    loteFiles.forEach((f, i) => {
+      if (i < turmaStudents.length) {
+        turmaStudents[i].hasDrawing = true;
+        turmaStudents[i].status = 'done';
+        turmaStudents[i].uploadedAt = new Date().toISOString();
+        matched++;
+      }
+    });
+    localStorage.setItem('em_students', JSON.stringify(students));
+    el.textContent = e.message.includes('503') || e.message.includes('não configurado')
+      ? `⚠ Google Drive não configurado — ${matched} arquivo(s) salvos localmente`
+      : `⚠ ${e.message} — ${matched} arquivo(s) salvos localmente`;
+    el.style.display = '';
+    el.style.background = '#fef3c7'; el.style.color = '#92400e';
+    setTimeout(() => { el.style.background = ''; el.style.color = ''; }, 5000);
+  }
+
+  btn.textContent = '✓ Enviar todos';
+  loteFiles = [];
+  document.getElementById('lotePreview').innerHTML = '';
+  setTimeout(() => { el.style.display = 'none'; }, 5000);
+}
+
+// Drag & drop
+['dropZoneIndiv', 'dropZoneLote'].forEach(id => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('dragover'); });
+  el.addEventListener('dragleave', () => el.classList.remove('dragover'));
+  el.addEventListener('drop', e => {
+    e.preventDefault(); el.classList.remove('dragover');
+    if (id === 'dropZoneIndiv' && e.dataTransfer.files.length) {
+      document.getElementById('fileIndiv').files = e.dataTransfer.files;
+      onIndivFile(document.getElementById('fileIndiv'));
+    } else if (id === 'dropZoneLote' && e.dataTransfer.files.length) {
+      loteFiles = Array.from(e.dataTransfer.files);
+      renderLotePreview();
+    }
+  });
+});
+
+// Listen for text input changes
+document.getElementById('textIndiv').addEventListener('input', updateIndivBtn);
+
+// Override onAlunoChange to also show upload section
+const _origAlunoChange = onAlunoChange;
+onAlunoChange = function() {
+  _origAlunoChange();
+  showUploadSection();
+};
+
+init();
+</script>
+</body>
+</html>

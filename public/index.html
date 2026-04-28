@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FLIPED — Grupo PED</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+:root {
+  --ink: #0f172a;
+  --page-cream: #fafaf9;
+  --shelf-wood: #92400e;
+  --shelf-light: #fef3c7;
+  --binding-blue: #1e40af;
+  --binding-blue-light: #dbeafe;
+  --binding-blue-hover: #1d4ed8;
+  --pencil-green: #15803d;
+  --pencil-green-light: #dcfce7;
+  --eraser-pink: #be123c;
+  --eraser-pink-light: #ffe4e6;
+  --chalk-gray: #64748b;
+  --chalk-gray-light: #f1f5f9;
+  --paper-white: #ffffff;
+  --notebook-line: #e2e8f0;
+  --sidebar-w: 260px;
+  --topbar-h: 56px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: var(--page-cream); color: var(--ink); }
+
+.sidebar {
+  position: fixed; left: 0; top: 0; bottom: 0;
+  width: var(--sidebar-w); background: var(--ink);
+  display: flex; flex-direction: column; z-index: 100;
+}
+.sidebar-brand { padding: 20px 20px 16px; border-bottom: 1px solid rgba(255,255,255,.08); }
+.sidebar-brand h1 { font-size: 16px; font-weight: 700; color: #fff; letter-spacing: -.3px; }
+.sidebar-brand span { font-size: 11px; color: var(--chalk-gray); display: block; margin-top: 2px; }
+.sidebar-section { padding: 16px 12px 8px; }
+.sidebar-section-title {
+  font-size: 10px; font-weight: 600; color: var(--chalk-gray);
+  text-transform: uppercase; letter-spacing: .8px; padding: 0 8px 8px;
+}
+.unit-btn {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 12px; border: none; background: transparent;
+  color: rgba(255,255,255,.65); font-size: 13px; font-weight: 500;
+  border-radius: 6px; cursor: pointer; text-align: left; transition: all .15s;
+}
+.unit-btn:hover { background: rgba(255,255,255,.06); color: #fff; }
+.unit-btn.active { background: var(--binding-blue); color: #fff; }
+.unit-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+.sidebar-nav { margin-top: auto; padding: 12px; border-top: 1px solid rgba(255,255,255,.08); }
+.nav-btn {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 10px 12px; border: none; background: transparent;
+  color: rgba(255,255,255,.55); font-size: 13px; font-weight: 500;
+  border-radius: 6px; cursor: pointer; text-align: left; transition: all .15s;
+}
+.nav-btn:hover { background: rgba(255,255,255,.06); color: #fff; }
+.nav-btn.active { background: rgba(255,255,255,.1); color: #fff; }
+.nav-icon { width: 18px; text-align: center; font-size: 15px; }
+
+.main { margin-left: var(--sidebar-w); min-height: 100vh; }
+.topbar {
+  height: var(--topbar-h); background: var(--paper-white);
+  border-bottom: 1px solid var(--notebook-line);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 28px; position: sticky; top: 0; z-index: 50;
+}
+.topbar-title { font-size: 15px; font-weight: 600; color: var(--ink); }
+.topbar-subtitle { font-size: 12px; color: var(--chalk-gray); margin-left: 8px; font-weight: 400; }
+.topbar-actions { display: flex; gap: 8px; }
+
+.btn {
+  padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500;
+  border: 1px solid var(--notebook-line); background: var(--paper-white);
+  color: var(--ink); cursor: pointer; transition: all .15s;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.btn:hover { border-color: var(--chalk-gray); }
+.btn-primary { background: var(--binding-blue); color: #fff; border-color: var(--binding-blue); }
+.btn-primary:hover { background: var(--binding-blue-hover); }
+.btn-success { background: var(--pencil-green); color: #fff; border-color: var(--pencil-green); }
+.btn-warn { background: var(--shelf-wood); color: #fff; border-color: var(--shelf-wood); }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+
+.content { padding: 24px 28px; }
+
+.stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+.stat-card { background: var(--paper-white); border: 1px solid var(--notebook-line); border-radius: 8px; padding: 16px 20px; }
+.stat-label { font-size: 11px; font-weight: 600; color: var(--chalk-gray); text-transform: uppercase; letter-spacing: .5px; }
+.stat-value { font-size: 28px; font-weight: 700; color: var(--ink); margin-top: 4px; }
+.stat-sub { font-size: 12px; color: var(--chalk-gray); margin-top: 2px; }
+
+.table-wrap { background: var(--paper-white); border: 1px solid var(--notebook-line); border-radius: 8px; overflow: hidden; }
+.table-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px; border-bottom: 1px solid var(--notebook-line); flex-wrap: wrap; gap: 8px;
+}
+.table-header h3 { font-size: 14px; font-weight: 600; }
+.table-search {
+  padding: 7px 12px; border: 1px solid var(--notebook-line); border-radius: 6px;
+  font-size: 13px; width: 240px; outline: none;
+}
+.table-search:focus { border-color: var(--binding-blue); }
+table { width: 100%; border-collapse: collapse; }
+thead th {
+  text-align: left; padding: 10px 16px; font-size: 11px; font-weight: 600;
+  color: var(--chalk-gray); text-transform: uppercase; letter-spacing: .5px;
+  border-bottom: 1px solid var(--notebook-line); background: var(--chalk-gray-light);
+}
+tbody td { padding: 10px 16px; font-size: 13px; border-bottom: 1px solid var(--notebook-line); vertical-align: middle; }
+tbody tr:hover { background: var(--chalk-gray-light); }
+tbody tr:last-child td { border-bottom: none; }
+
+.badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+.badge-done { background: var(--pencil-green-light); color: var(--pencil-green); }
+.badge-review { background: var(--binding-blue-light); color: var(--binding-blue); }
+.badge-pending { background: var(--shelf-light); color: var(--shelf-wood); }
+.badge-empty { background: var(--chalk-gray-light); color: var(--chalk-gray); }
+.badge-alert { background: var(--eraser-pink-light); color: var(--eraser-pink); }
+
+.modal-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(15,23,42,.5);
+  z-index: 200; align-items: center; justify-content: center;
+}
+.modal-overlay.show { display: flex; }
+.modal {
+  background: var(--paper-white); border-radius: 10px; width: 600px;
+  max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.2);
+}
+.modal-head {
+  padding: 18px 24px; border-bottom: 1px solid var(--notebook-line);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.modal-head h3 { font-size: 15px; font-weight: 600; }
+.modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--chalk-gray); padding: 4px 8px; }
+.modal-body { padding: 20px 24px; }
+.modal-foot { padding: 14px 24px; border-top: 1px solid var(--notebook-line); display: flex; justify-content: flex-end; gap: 8px; }
+
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; font-size: 12px; font-weight: 600; color: var(--chalk-gray); margin-bottom: 6px; }
+.form-group input, .form-group select, .form-group textarea {
+  width: 100%; padding: 9px 12px; border: 1px solid var(--notebook-line);
+  border-radius: 6px; font-size: 13px; outline: none; font-family: inherit;
+}
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--binding-blue); }
+.form-group textarea { resize: vertical; min-height: 80px; }
+
+.progress-bar { height: 8px; background: var(--chalk-gray-light); border-radius: 4px; overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 4px; transition: width .5s ease; }
+.progress-fill.green { background: var(--pencil-green); }
+.progress-fill.blue { background: var(--binding-blue); }
+.progress-fill.yellow { background: #eab308; }
+.progress-fill.red { background: var(--eraser-pink); }
+
+.upload-zone {
+  border: 2px dashed var(--notebook-line); border-radius: 8px;
+  padding: 40px; text-align: center; cursor: pointer; transition: all .2s;
+}
+.upload-zone:hover, .upload-zone.dragover { border-color: var(--binding-blue); background: var(--binding-blue-light); }
+.upload-zone-icon { font-size: 36px; margin-bottom: 8px; }
+.upload-zone-text { font-size: 14px; color: var(--chalk-gray); }
+.upload-zone-text strong { color: var(--binding-blue); }
+
+.dash-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+.dash-unit-card { background: var(--paper-white); border: 1px solid var(--notebook-line); border-radius: 8px; overflow: hidden; }
+.dash-unit-head { padding: 14px 18px; border-bottom: 1px solid var(--notebook-line); display: flex; align-items: center; justify-content: space-between; }
+.dash-unit-head h4 { font-size: 14px; font-weight: 600; }
+.dash-unit-body { padding: 14px 18px; }
+.dash-turma-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--notebook-line); }
+.dash-turma-row:last-child { border-bottom: none; }
+.dash-turma-name { font-size: 12px; font-weight: 600; width: 100px; flex-shrink: 0; }
+.dash-turma-bar { flex: 1; }
+.dash-turma-count { font-size: 12px; color: var(--chalk-gray); width: 70px; text-align: right; flex-shrink: 0; }
+
+/* Story text preview */
+.story-preview {
+  background: var(--chalk-gray-light); border-radius: 6px; padding: 10px 12px;
+  font-size: 12px; color: var(--ink); line-height: 1.5;
+  max-height: 60px; overflow: hidden; position: relative;
+  cursor: pointer;
+}
+.story-preview:hover { max-height: none; background: var(--binding-blue-light); }
+.story-preview.empty { color: var(--chalk-gray); font-style: italic; }
+
+/* Review card */
+.review-card {
+  background: var(--paper-white); border: 1px solid var(--notebook-line);
+  border-radius: 8px; padding: 18px; margin-bottom: 12px;
+}
+.review-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.review-card-name { font-size: 14px; font-weight: 600; }
+.review-card-meta { font-size: 12px; color: var(--chalk-gray); }
+.review-card textarea {
+  width: 100%; min-height: 100px; padding: 10px 12px; border: 1px solid var(--notebook-line);
+  border-radius: 6px; font-size: 13px; font-family: inherit; outline: none; resize: vertical;
+  line-height: 1.6;
+}
+.review-card textarea:focus { border-color: var(--binding-blue); }
+.review-card-actions { display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end; }
+
+.page { display: none; }
+.page.active { display: block; }
+
+.tabs { display: flex; gap: 4px; margin-bottom: 20px; }
+.tab-btn {
+  padding: 8px 16px; border: 1px solid var(--notebook-line); background: var(--paper-white);
+  border-radius: 6px 6px 0 0; font-size: 13px; font-weight: 500; cursor: pointer;
+  color: var(--chalk-gray); border-bottom: 2px solid transparent;
+}
+.tab-btn.active { color: var(--binding-blue); border-bottom-color: var(--binding-blue); background: var(--binding-blue-light); }
+
+@media (max-width: 900px) {
+  .sidebar { width: 60px; }
+  .sidebar-brand h1, .sidebar-brand span, .sidebar-section-title, .unit-btn span, .nav-btn span { display: none; }
+  .main { margin-left: 60px; }
+  .stats-row { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="sidebar-brand">
+    <h1>FLIPED</h1>
+    <span>Grupo PED — 2026</span>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">Unidades</div>
+    <div id="unitList"></div>
+  </div>
+  <nav class="sidebar-nav">
+    <button class="nav-btn active" onclick="showPage('alunos')">
+      <span class="nav-icon">👥</span><span>Alunos & PDFs</span>
+    </button>
+    <button class="nav-btn" onclick="showPage('upload')">
+      <span class="nav-icon">📤</span><span>Upload & Texto</span>
+    </button>
+    <button class="nav-btn" onclick="showPage('revisao')">
+      <span class="nav-icon">✏️</span><span>Revisão Textos</span>
+    </button>
+    <button class="nav-btn" onclick="showPage('dashboard')">
+      <span class="nav-icon">📊</span><span>Painel Marketing</span>
+    </button>
+  </nav>
+</aside>
+
+<div class="main">
+  <div class="topbar">
+    <div>
+      <span class="topbar-title" id="topbarTitle">Alunos & Geração de PDF</span>
+      <span class="topbar-subtitle" id="topbarUnit">Todas as unidades</span>
+    </div>
+    <div class="topbar-actions" id="topbarActions">
+      <button class="btn" onclick="openImport()">📋 Importar Lista</button>
+      <button class="btn btn-primary" onclick="openAddStudent()">+ Novo Aluno</button>
+    </div>
+  </div>
+
+  <!-- PAGE: ALUNOS -->
+  <div class="content page active" id="page-alunos">
+    <div class="stats-row" id="statsRow"></div>
+    <div class="table-wrap">
+      <div class="table-header">
+        <h3>Lista de Alunos</h3>
+        <input type="text" class="table-search" placeholder="Buscar por nome, turma..." oninput="filterStudents(this.value)">
+      </div>
+      <table>
+        <thead><tr><th>Aluno</th><th>Turma</th><th>Professor(a)</th><th>Unidade</th><th>Status</th><th style="text-align:right">Ações</th></tr></thead>
+        <tbody id="studentTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- PAGE: UPLOAD + TEXTO -->
+  <div class="content page" id="page-upload">
+    <div class="stats-row" id="uploadStats"></div>
+    <div class="table-wrap" style="margin-bottom:20px">
+      <div class="table-header">
+        <h3>Selecione o aluno para upload</h3>
+        <select id="uploadTurmaFilter" onchange="renderUploadList()" style="padding:7px 12px;border:1px solid var(--notebook-line);border-radius:6px;font-size:13px">
+          <option value="">Todas as turmas</option>
+        </select>
+      </div>
+      <table>
+        <thead><tr><th>Aluno</th><th>Turma</th><th>Desenho</th><th>Texto</th><th style="text-align:right">Ação</th></tr></thead>
+        <tbody id="uploadTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- PAGE: REVISÃO DE TEXTOS -->
+  <div class="content page" id="page-revisao">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <div>
+        <h2 style="font-size:18px;font-weight:700">Revisão de Textos</h2>
+        <p style="font-size:13px;color:var(--chalk-gray);margin-top:4px">Revise e edite as histórias dos alunos antes de gerar o livro</p>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select id="revisaoFilter" onchange="renderRevisao()" style="padding:7px 12px;border:1px solid var(--notebook-line);border-radius:6px;font-size:13px">
+          <option value="all">Todos</option>
+          <option value="with-text">Com texto</option>
+          <option value="no-text">Sem texto</option>
+          <option value="reviewed">Revisados</option>
+        </select>
+        <select id="revisaoTurma" onchange="renderRevisao()" style="padding:7px 12px;border:1px solid var(--notebook-line);border-radius:6px;font-size:13px">
+          <option value="">Todas as turmas</option>
+        </select>
+      </div>
+    </div>
+    <div id="revisaoList"></div>
+  </div>
+
+  <!-- PAGE: DASHBOARD MARKETING -->
+  <div class="content page" id="page-dashboard">
+    <div class="stats-row" id="dashStats"></div>
+    <div class="dash-grid" id="dashGrid"></div>
+  </div>
+</div>
+
+<!-- MODAL: IMPORT -->
+<div class="modal-overlay" id="modalImport">
+  <div class="modal">
+    <div class="modal-head"><h3>Importar Lista de Alunos</h3><button class="modal-close" onclick="closeModal('modalImport')">&times;</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label>Unidade</label><select id="importUnit"><option value="">Selecione a unidade</option></select></div>
+      <div class="form-group"><label>Turma</label><input type="text" id="importTurma" placeholder="Ex: 3º Ano A"></div>
+      <div class="form-group"><label>Cole a lista de nomes (um por linha)</label><textarea id="importNames" placeholder="Maria Silva&#10;João Santos&#10;Ana Costa&#10;..." style="height:150px"></textarea></div>
+      <p style="font-size:12px;color:var(--chalk-gray)">Cole direto do Excel ou planilha. Um nome por linha.</p>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal('modalImport')">Cancelar</button><button class="btn btn-primary" onclick="doImport()">Importar</button></div>
+  </div>
+</div>
+
+<!-- MODAL: ADD STUDENT -->
+<div class="modal-overlay" id="modalAdd">
+  <div class="modal">
+    <div class="modal-head"><h3>Adicionar Aluno</h3><button class="modal-close" onclick="closeModal('modalAdd')">&times;</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label>Unidade</label><select id="addUnit"></select></div>
+      <div class="form-group"><label>Turma</label><input type="text" id="addTurma" placeholder="Ex: 3º Ano A"></div>
+      <div class="form-group"><label>Nome do Aluno</label><input type="text" id="addName" placeholder="Nome completo"></div>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal('modalAdd')">Cancelar</button><button class="btn btn-primary" onclick="doAddStudent()">Adicionar</button></div>
+  </div>
+</div>
+
+<!-- MODAL: UPLOAD + TEXTO DO ALUNO -->
+<div class="modal-overlay" id="modalUpload">
+  <div class="modal">
+    <div class="modal-head"><h3 id="uploadModalTitle">Upload do Desenho + História</h3><button class="modal-close" onclick="closeModal('modalUpload')">&times;</button></div>
+    <div class="modal-body">
+      <div style="background:var(--binding-blue-light);border-radius:8px;padding:14px;margin-bottom:16px">
+        <strong id="uploadStudentName" style="font-size:15px;color:var(--binding-blue)"></strong>
+        <div id="uploadStudentMeta" style="font-size:12px;color:var(--chalk-gray);margin-top:2px"></div>
+      </div>
+      <div class="form-group">
+        <label>📸 Arquivo do desenho (foto ou scan)</label>
+        <div class="upload-zone" onclick="document.getElementById('modalFileInput').click()" style="padding:24px">
+          <div class="upload-zone-icon">📸</div>
+          <div class="upload-zone-text" id="uploadFileLabel">Clique para selecionar o arquivo</div>
+          <input type="file" id="modalFileInput" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="onFileSelected(this)">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>📝 Texto da história do aluno</label>
+        <textarea id="uploadText" placeholder="Digite aqui o texto da história que o aluno escreveu..." style="min-height:140px;line-height:1.6"></textarea>
+        <p style="font-size:11px;color:var(--chalk-gray);margin-top:4px">O professor pode transcrever o texto manuscrito do aluno. Será revisável depois.</p>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal('modalUpload')">Cancelar</button>
+      <button class="btn btn-success" onclick="doUpload()">✓ Salvar Upload + Texto</button>
+    </div>
+  </div>
+</div>
+
+<div id="qr-temp" style="position:absolute;left:-9999px;top:-9999px"></div>
+
+<script>
+const UNITS = [
+  { id: 'coc-lauro', name: 'COC Lauro de Freitas', short: 'COC-LF', color: '#dc2626' },
+  { id: 'coc-horto', name: 'COC Horto Florestal', short: 'COC-HF', color: '#ea580c' },
+  { id: 'ped-imbui', name: 'PED Imbuí', short: 'PED-IMB', color: '#2563eb' },
+  { id: 'ped-cajazeiras', name: 'PED Cajazeiras', short: 'PED-CAJ', color: '#7c3aed' },
+  { id: 'ped-lauro', name: 'PED Lauro de Freitas', short: 'PED-LF', color: '#0891b2' },
+  { id: 'anglo-lauro', name: 'Anglo Lauro de Freitas', short: 'ANG-LF', color: '#15803d' },
+  { id: 'ped-pituba', name: 'PED Pituba', short: 'PED-PIT', color: '#b45309' },
+];
+
+function genCode(s) {
+  const u = UNITS.find(x => x.id === s.unit);
+  const unitShort = u ? u.short : 'PED';
+  const turmaClean = s.turma.replace(/[ºª°\s]/g, '').toUpperCase();
+  const allInTurma = students.filter(x => x.unit === s.unit && x.turma === s.turma).sort((a,b) => a.name.localeCompare(b.name));
+  const seq = String(allInTurma.findIndex(x => x.id === s.id) + 1).padStart(3, '0');
+  return `${unitShort}-${turmaClean}-${seq}`;
+}
+
+let students = JSON.parse(localStorage.getItem('em_students') || '[]');
+// Migrate old data: add text fields if missing
+students.forEach(s => {
+  if (!s.storyText) s.storyText = '';
+  if (!s.textReviewed) s.textReviewed = false;
+  if (!s.hasDrawing) s.hasDrawing = false;
+});
+
+let currentUnit = '';
+let currentPage = 'alunos';
+let uploadTargetId = null;
+let uploadFileSelected = false;
+
+// Professores responsáveis por turma { "unit|turma": "Nome da Professora" }
+let turmaTeachers = JSON.parse(localStorage.getItem('em_teachers') || '{}');
+
+function save() {
+  localStorage.setItem('em_students', JSON.stringify(students));
+  localStorage.setItem('em_teachers', JSON.stringify(turmaTeachers));
+}
+
+function getTeacherKey(unit, turma) { return `${unit}|${turma}`; }
+function getTeacher(unit, turma) { return turmaTeachers[getTeacherKey(unit, turma)] || ''; }
+
+// ═══ SEED (carrega alunos do JSON se localStorage vazio) ═══
+async function seedStudents() {
+  if (students.length > 0) return;
+  try {
+    const res = await fetch('alunos_seed.json');
+    if (!res.ok) return;
+    const data = await res.json();
+    data.forEach(s => {
+      students.push({
+        id: crypto.randomUUID(), name: s.name, turma: s.turma, unit: s.unit,
+        status: 'pending', pdfGenerated: false, uploadedAt: null,
+        storyText: '', textReviewed: false, hasDrawing: false
+      });
+    });
+    save();
+    console.log(`Seed: ${data.length} alunos carregados`);
+  } catch(e) { console.log('Seed não disponível:', e); }
+}
+
+// ═══ INIT ═══
+async function init() {
+  await seedStudents();
+  renderUnits(); renderAll(); populateSelects();
+}
+
+function renderUnits() {
+  const el = document.getElementById('unitList');
+  let html = `<button class="unit-btn ${currentUnit===''?'active':''}" onclick="selectUnit('')">
+    <span class="unit-dot" style="background:#fff"></span><span>Todas (${students.length})</span>
+  </button>`;
+  UNITS.forEach(u => {
+    const c = students.filter(s => s.unit === u.id).length;
+    html += `<button class="unit-btn ${currentUnit===u.id?'active':''}" onclick="selectUnit('${u.id}')">
+      <span class="unit-dot" style="background:${u.color}"></span><span>${u.name} (${c})</span>
+    </button>`;
+  });
+  el.innerHTML = html;
+}
+
+function selectUnit(id) {
+  currentUnit = id;
+  const u = UNITS.find(x => x.id === id);
+  document.getElementById('topbarUnit').textContent = u ? u.name : 'Todas as unidades';
+  renderUnits(); renderAll();
+}
+
+function showPage(p) {
+  currentPage = p;
+  document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
+  document.getElementById('page-' + p).classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
+  const idx = ['alunos','upload','revisao','dashboard'].indexOf(p);
+  document.querySelectorAll('.nav-btn')[idx].classList.add('active');
+
+  const titles = { alunos:'Alunos & Geração de PDF', upload:'Upload Desenho + Texto', revisao:'Revisão de Textos', dashboard:'Painel Marketing' };
+  document.getElementById('topbarTitle').textContent = titles[p];
+  document.getElementById('topbarActions').style.display = p === 'alunos' ? 'flex' : 'none';
+  renderAll();
+}
+
+function renderAll() {
+  if (currentPage === 'alunos') { renderStats(); renderTable(); }
+  if (currentPage === 'upload') { renderUploadStats(); renderUploadList(); }
+  if (currentPage === 'revisao') { renderRevisao(); }
+  if (currentPage === 'dashboard') { renderDashboard(); }
+}
+
+function filtered() { return currentUnit ? students.filter(s => s.unit === currentUnit) : students; }
+
+// ═══ STATS ═══
+function renderStats() {
+  const f = filtered(), total = f.length;
+  const done = f.filter(s => s.status === 'done').length;
+  const withText = f.filter(s => s.storyText).length;
+  const turmas = [...new Set(f.map(s => s.turma))].length;
+  document.getElementById('statsRow').innerHTML = `
+    <div class="stat-card"><div class="stat-label">Total Alunos</div><div class="stat-value">${total}</div><div class="stat-sub">${turmas} turma${turmas!==1?'s':''}</div></div>
+    <div class="stat-card"><div class="stat-label">PDF Gerado</div><div class="stat-value">${f.filter(s=>s.pdfGenerated).length}</div><div class="stat-sub">folhas impressas</div></div>
+    <div class="stat-card"><div class="stat-label">Desenho + Texto</div><div class="stat-value" style="color:var(--pencil-green)">${done}</div><div class="stat-sub">${total?Math.round(done/total*100):0}% completo</div></div>
+    <div class="stat-card"><div class="stat-label">Textos Escritos</div><div class="stat-value" style="color:var(--binding-blue)">${withText}</div><div class="stat-sub">${total?Math.round(withText/total*100):0}% com história</div></div>
+  `;
+}
+
+// ═══ TABLE ALUNOS ═══
+function renderTable(filter='') {
+  const f = filtered().filter(s => {
+    if (!filter) return true;
+    const q = filter.toLowerCase();
+    return s.name.toLowerCase().includes(q) || s.turma.toLowerCase().includes(q);
+  });
+  const tbody = document.getElementById('studentTableBody');
+  if (!f.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--chalk-gray)">Nenhum aluno cadastrado. Use "Importar Lista" para começar.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = f.map(s => {
+    const u = UNITS.find(x => x.id === s.unit);
+    let badge;
+    if (s.status === 'done' && s.textReviewed) badge = '<span class="badge badge-done">✓ Completo</span>';
+    else if (s.status === 'done') badge = '<span class="badge badge-review">Revisar texto</span>';
+    else if (s.pdfGenerated) badge = '<span class="badge badge-pending">PDF gerado</span>';
+    else badge = '<span class="badge badge-empty">Aguardando</span>';
+    const teacher = getTeacher(s.unit, s.turma);
+    const teacherCell = teacher
+      ? `<span style="cursor:pointer" onclick="editTeacher('${s.unit}','${s.turma}')" title="Clique para editar">${teacher}</span>`
+      : `<button class="btn btn-sm" onclick="editTeacher('${s.unit}','${s.turma}')" style="font-size:11px;color:var(--chalk-gray)">+ Professor(a)</button>`;
+    return `<tr>
+      <td><strong>${s.name}</strong>${s.storyText?'<br><small style="color:var(--chalk-gray)">📝 história escrita</small>':''}</td>
+      <td>${s.turma}</td>
+      <td>${teacherCell}</td>
+      <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${u?u.color:'#ccc'};margin-right:6px;vertical-align:middle"></span>${u?u.name:s.unit}</td>
+      <td>${badge}</td>
+      <td style="text-align:right">
+        <button class="btn btn-sm btn-primary" onclick="generatePDF('${s.id}')">📄 PDF</button>
+        <button class="btn btn-sm" onclick="removeStudent('${s.id}')" title="Remover">🗑</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+function filterStudents(q) { renderTable(q); }
+
+// ═══ IMPORT ═══
+function populateSelects() {
+  const opts = UNITS.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
+  document.getElementById('importUnit').innerHTML = '<option value="">Selecione</option>' + opts;
+  document.getElementById('addUnit').innerHTML = opts;
+}
+
+function openImport() { document.getElementById('modalImport').classList.add('show'); }
+function openAddStudent() { document.getElementById('modalAdd').classList.add('show'); }
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+function doImport() {
+  const unit = document.getElementById('importUnit').value;
+  const turma = document.getElementById('importTurma').value.trim();
+  const names = document.getElementById('importNames').value.trim().split('\n').filter(n => n.trim());
+  if (!unit || !turma || !names.length) { alert('Preencha todos os campos'); return; }
+  names.forEach(name => {
+    students.push({
+      id: crypto.randomUUID(), name: name.trim(), turma, unit,
+      status: 'pending', pdfGenerated: false, uploadedAt: null,
+      storyText: '', textReviewed: false, hasDrawing: false
+    });
+  });
+  save(); closeModal('modalImport');
+  document.getElementById('importNames').value = '';
+  document.getElementById('importTurma').value = '';
+  renderUnits(); renderAll();
+  alert(`${names.length} aluno(s) importado(s)!`);
+}
+
+function doAddStudent() {
+  const unit = document.getElementById('addUnit').value;
+  const turma = document.getElementById('addTurma').value.trim();
+  const name = document.getElementById('addName').value.trim();
+  if (!unit || !turma || !name) { alert('Preencha todos os campos'); return; }
+  students.push({
+    id: crypto.randomUUID(), name, turma, unit,
+    status: 'pending', pdfGenerated: false, uploadedAt: null,
+    storyText: '', textReviewed: false, hasDrawing: false
+  });
+  save(); closeModal('modalAdd');
+  document.getElementById('addName').value = '';
+  renderUnits(); renderAll();
+}
+
+function removeStudent(id) {
+  if (!confirm('Remover este aluno?')) return;
+  students = students.filter(s => s.id !== id);
+  save(); renderUnits(); renderAll();
+}
+
+// ═══ PDF ═══
+async function generatePDF(studentId) {
+  const s = students.find(x => x.id === studentId);
+  if (!s) return;
+  const u = UNITS.find(x => x.id === s.unit);
+  const code = genCode(s);
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const W=210,H=297,m=12;
+
+  // HEADER
+  doc.setFillColor(30,64,175); doc.rect(0,0,W,20,'F');
+  doc.setTextColor(255); doc.setFontSize(10); doc.setFont('helvetica','bold');
+  doc.text('FLIPED — GRUPO PED',m,9);
+  doc.setFontSize(8); doc.setFont('helvetica','normal');
+  doc.text(u?u.name.toUpperCase():'',W-m,9,{align:'right'});
+  doc.text('Fotografe esta folha depois de pronta',W-m,15,{align:'right'});
+
+  // DADOS DO ALUNO
+  doc.setTextColor(15,23,42); doc.setFontSize(13); doc.setFont('helvetica','bold');
+  doc.text('AUTOR(A):',m,30); doc.setFont('helvetica','normal');
+  doc.text(s.name.toUpperCase(),44,30);
+  doc.setFontSize(10); doc.setFont('helvetica','bold');
+  doc.text('TURMA:',m,38); doc.setFont('helvetica','normal'); doc.text(s.turma,32,38);
+  doc.setFont('helvetica','bold'); doc.text('UNIDADE:',85,38);
+  doc.setFont('helvetica','normal'); doc.text(u?u.name:'',110,38);
+
+  // CÓDIGO IDENTIFICAÇÃO (box escuro)
+  doc.setFillColor(15,23,42); doc.roundedRect(W-m-52,24,52,18,2,2,'F');
+  doc.setTextColor(255); doc.setFontSize(9); doc.setFont('helvetica','bold');
+  doc.text(code,W-m-26,33,{align:'center'});
+  doc.setFontSize(6); doc.setFont('helvetica','normal');
+  doc.text('CÓDIGO IDENTIFICAÇÃO',W-m-26,39,{align:'center'});
+
+  doc.setDrawColor(203,213,225); doc.setLineWidth(.3); doc.line(m,44,W-m,44);
+  doc.setTextColor(15,23,42); doc.setFontSize(10); doc.setFont('helvetica','bold');
+  doc.text('TÍTULO DA HISTÓRIA:',m,52); doc.setLineWidth(.5); doc.line(60,52,W-m,52);
+
+  // ÁREA DESENHO
+  const dT=58,dB=210;
+  doc.setDrawColor(30,64,175); doc.setLineWidth(.8); doc.setLineDashPattern([3,2],0);
+  doc.roundedRect(m,dT,W-2*m,dB-dT,2,2,'S'); doc.setLineDashPattern([],0);
+  // área limpa para desenho
+
+  // LINHAS TEXTO
+  doc.setTextColor(15,23,42); doc.setFontSize(9); doc.setFont('helvetica','bold');
+  doc.text('MINHA HISTÓRIA:',m,216);
+  doc.setDrawColor(226,232,240); doc.setLineWidth(.3);
+  let ly=222; for(let i=0;i<6;i++){doc.line(m,ly,W-m,ly);ly+=7;}
+
+  // ══ FAIXA DE IDENTIFICAÇÃO (rodapé escuro) ══
+  const footY=H-30;
+  doc.setFillColor(15,23,42); doc.rect(0,footY,W,30,'F');
+  doc.setTextColor(255); doc.setFontSize(14); doc.setFont('helvetica','bold');
+  doc.text(code,m,footY+12);
+  doc.setFontSize(8); doc.setFont('helvetica','normal');
+  doc.text(s.name,m,footY+19);
+  doc.text(`${s.turma} | ${u?u.name:''} | Grupo PED 2026`,m,footY+25);
+
+  doc.setDrawColor(100,116,139); doc.setLineWidth(.3);
+  doc.line(W-45,footY+3,W-45,footY+27);
+
+  // QR CODE no rodapé
+  const qrDiv=document.getElementById('qr-temp'); qrDiv.innerHTML='';
+  const qrPayload=JSON.stringify({code,id:s.id,name:s.name,turma:s.turma,unit:s.unit,unitName:u?u.name:''});
+  new QRCode(qrDiv,{text:qrPayload,width:256,height:256,colorDark:'#ffffff',colorLight:'#0f172a',correctLevel:QRCode.CorrectLevel.M});
+  await new Promise(r=>setTimeout(r,250));
+  const qrC=qrDiv.querySelector('canvas');
+  if(qrC){doc.addImage(qrC.toDataURL('image/png'),'PNG',W-40,footY+2,26,26);}
+
+  doc.save(`Folha_${s.name.replace(/\s+/g,'_')}_${code}.pdf`);
+  s.pdfGenerated=true; save(); renderAll();
+}
+
+// ═══ UPLOAD + TEXTO ═══
+function renderUploadStats() {
+  const f=filtered(), total=f.length;
+  const withDrawing=f.filter(s=>s.hasDrawing).length;
+  const withText=f.filter(s=>s.storyText).length;
+  const complete=f.filter(s=>s.hasDrawing&&s.storyText).length;
+  const pct=total?Math.round(complete/total*100):0;
+  document.getElementById('uploadStats').innerHTML = `
+    <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">${total}</div></div>
+    <div class="stat-card"><div class="stat-label">Com Desenho</div><div class="stat-value" style="color:var(--pencil-green)">${withDrawing}</div><div class="stat-sub">${total?Math.round(withDrawing/total*100):0}%</div></div>
+    <div class="stat-card"><div class="stat-label">Com Texto</div><div class="stat-value" style="color:var(--binding-blue)">${withText}</div><div class="stat-sub">${total?Math.round(withText/total*100):0}%</div></div>
+    <div class="stat-card"><div class="stat-label">Completo (ambos)</div><div class="stat-value">${complete}</div>
+      <div class="progress-bar" style="margin-top:8px"><div class="progress-fill ${pct>=80?'green':pct>=50?'blue':'yellow'}" style="width:${pct}%"></div></div></div>
+  `;
+  // Populate turma filter
+  const sel=document.getElementById('uploadTurmaFilter');
+  const turmas=[...new Set(filtered().map(s=>s.turma))].sort();
+  sel.innerHTML='<option value="">Todas as turmas</option>'+turmas.map(t=>`<option>${t}</option>`).join('');
+}
+
+function renderUploadList() {
+  const tf=document.getElementById('uploadTurmaFilter').value;
+  let f=filtered();
+  if(tf) f=f.filter(s=>s.turma===tf);
+  f.sort((a,b)=>a.name.localeCompare(b.name));
+
+  const tbody=document.getElementById('uploadTableBody');
+  if(!f.length){tbody.innerHTML=`<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--chalk-gray)">Nenhum aluno encontrado</td></tr>`;return;}
+
+  tbody.innerHTML=f.map(s=>{
+    const drawBadge=s.hasDrawing
+      ?(s.driveLink?`<a href="${s.driveLink}" target="_blank" class="badge badge-done" style="text-decoration:none" title="Ver no Google Drive">✓ Drive</a>`:'<span class="badge badge-done">✓</span>')
+      :'<span class="badge badge-empty">—</span>';
+    const textBadge=s.storyText?'<span class="badge badge-done">✓</span>':'<span class="badge badge-empty">—</span>';
+    return `<tr>
+      <td><strong>${s.name}</strong></td>
+      <td>${s.turma}</td>
+      <td>${drawBadge}</td>
+      <td>${textBadge}</td>
+      <td style="text-align:right">
+        <button class="btn btn-sm btn-success" onclick="openUploadModal('${s.id}')">📤 Upload + Texto</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openUploadModal(id) {
+  uploadTargetId=id; uploadFileSelected=false;
+  const s=students.find(x=>x.id===id);
+  const u=UNITS.find(x=>x.id===s.unit);
+  document.getElementById('uploadStudentName').textContent=s.name;
+  document.getElementById('uploadStudentMeta').textContent=`${s.turma} — ${u?u.name:''}`;
+  document.getElementById('uploadText').value=s.storyText||'';
+  document.getElementById('uploadFileLabel').textContent=s.hasDrawing?'✓ Desenho já enviado — clique para substituir':'Clique para selecionar o arquivo';
+  document.getElementById('modalFileInput').value='';
+  document.getElementById('modalUpload').classList.add('show');
+}
+
+function onFileSelected(input) {
+  if(input.files.length){
+    uploadFileSelected=true;
+    document.getElementById('uploadFileLabel').textContent=`✓ ${input.files[0].name}`;
+  }
+}
+
+async function doUpload() {
+  const s=students.find(x=>x.id===uploadTargetId);
+  if(!s)return;
+  const text=document.getElementById('uploadText').value.trim();
+  const fileInput=document.getElementById('modalFileInput');
+
+  try {
+    if(uploadFileSelected && fileInput.files.length) {
+      const u=UNITS.find(x=>x.id===s.unit);
+      const formData=new FormData();
+      formData.append('file', fileInput.files[0]);
+      formData.append('studentName', s.name);
+      formData.append('studentId', s.id);
+      formData.append('turma', s.turma);
+      formData.append('unitName', u?u.name:s.unit);
+      formData.append('storyText', text);
+
+      const res=await fetch('/api/upload',{method:'POST',body:formData});
+      const data=await res.json();
+      if(data.success){
+        s.hasDrawing=true;
+        s.driveFileId=data.file.id;
+        s.driveLink=data.file.link;
+      } else {
+        s.hasDrawing=true; // fallback local
+      }
+    }
+  } catch(e) {
+    if(uploadFileSelected) s.hasDrawing=true; // fallback local
+  }
+
+  if(text) s.storyText=text;
+  if(s.hasDrawing||s.storyText){
+    s.status='done';
+    s.uploadedAt=new Date().toISOString();
+  }
+  save(); closeModal('modalUpload'); renderAll();
+  alert(`${s.name}: ${uploadFileSelected?'desenho + ':''}${text?'texto ':''}salvo!`);
+}
+
+// ═══ REVISÃO DE TEXTOS ═══
+function renderRevisao() {
+  const filter=document.getElementById('revisaoFilter').value;
+  const turma=document.getElementById('revisaoTurma').value;
+  let f=filtered();
+  if(turma) f=f.filter(s=>s.turma===turma);
+
+  if(filter==='with-text') f=f.filter(s=>s.storyText);
+  else if(filter==='no-text') f=f.filter(s=>!s.storyText);
+  else if(filter==='reviewed') f=f.filter(s=>s.textReviewed);
+
+  f.sort((a,b)=>a.name.localeCompare(b.name));
+
+  // Populate turma select
+  const sel=document.getElementById('revisaoTurma');
+  const turmas=[...new Set(filtered().map(s=>s.turma))].sort();
+  const currentVal=sel.value;
+  sel.innerHTML='<option value="">Todas as turmas</option>'+turmas.map(t=>`<option ${t===currentVal?'selected':''}>${t}</option>`).join('');
+
+  const list=document.getElementById('revisaoList');
+  if(!f.length){
+    list.innerHTML=`<div style="text-align:center;padding:40px;color:var(--chalk-gray)">Nenhum aluno encontrado com este filtro</div>`;
+    return;
+  }
+
+  list.innerHTML=f.map(s=>{
+    const u=UNITS.find(x=>x.id===s.unit);
+    const statusBadge=s.textReviewed?'<span class="badge badge-done">✓ Revisado</span>'
+      :s.storyText?'<span class="badge badge-review">Pendente revisão</span>'
+      :'<span class="badge badge-empty">Sem texto</span>';
+    return `<div class="review-card">
+      <div class="review-card-head">
+        <div>
+          <div class="review-card-name">${s.name}</div>
+          <div class="review-card-meta">${s.turma} — ${u?u.name:''} ${s.hasDrawing?'| 📸 Desenho recebido':''}</div>
+        </div>
+        ${statusBadge}
+      </div>
+      <textarea id="text-${s.id}" placeholder="O aluno ainda não tem texto. Digite a história aqui...">${s.storyText||''}</textarea>
+      <div class="review-card-actions">
+        <button class="btn btn-sm" onclick="saveText('${s.id}',false)">💾 Salvar rascunho</button>
+        <button class="btn btn-sm btn-success" onclick="saveText('${s.id}',true)">✓ Aprovar texto</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function saveText(id, approve) {
+  const s=students.find(x=>x.id===id);
+  if(!s)return;
+  const textarea=document.getElementById('text-'+id);
+  s.storyText=textarea.value.trim();
+  if(approve){
+    if(!s.storyText){alert('Não é possível aprovar sem texto');return;}
+    s.textReviewed=true;
+  } else {
+    s.textReviewed=false;
+  }
+  if(s.storyText&&s.hasDrawing) s.status='done';
+  save();
+  renderRevisao();
+  // Brief visual feedback
+  const card=textarea.closest('.review-card');
+  card.style.borderColor=approve?'var(--pencil-green)':'var(--binding-blue)';
+  setTimeout(()=>{card.style.borderColor='';},1000);
+}
+
+// ═══ DASHBOARD MARKETING ═══
+function renderDashboard() {
+  const total=students.length;
+  const withDrawing=students.filter(s=>s.hasDrawing).length;
+  const withText=students.filter(s=>s.storyText).length;
+  const complete=students.filter(s=>s.hasDrawing&&s.storyText&&s.textReviewed).length;
+  const pct=total?Math.round(complete/total*100):0;
+
+  document.getElementById('dashStats').innerHTML = `
+    <div class="stat-card"><div class="stat-label">Total Alunos</div><div class="stat-value">${total}</div><div class="stat-sub">7 unidades</div></div>
+    <div class="stat-card"><div class="stat-label">Desenhos Recebidos</div><div class="stat-value">${withDrawing}</div><div class="stat-sub">${total?Math.round(withDrawing/total*100):0}%</div></div>
+    <div class="stat-card"><div class="stat-label">Textos Escritos</div><div class="stat-value">${withText}</div><div class="stat-sub">${total?Math.round(withText/total*100):0}%</div></div>
+    <div class="stat-card"><div class="stat-label">Pronto p/ Layout</div><div class="stat-value" style="color:${pct>=80?'var(--pencil-green)':pct>=50?'var(--binding-blue)':'var(--eraser-pink)'}">${complete}</div>
+      <div class="progress-bar" style="margin-top:8px"><div class="progress-fill ${pct>=80?'green':pct>=50?'blue':'red'}" style="width:${pct}%"></div></div>
+      <div class="stat-sub">${pct}% — desenho + texto revisado</div></div>
+  `;
+
+  document.getElementById('dashGrid').innerHTML = UNITS.map(u => {
+    const us=students.filter(s=>s.unit===u.id);
+    const uComplete=us.filter(s=>s.hasDrawing&&s.storyText&&s.textReviewed).length;
+    const uPct=us.length?Math.round(uComplete/us.length*100):0;
+    const turmas={};
+    us.forEach(s=>{
+      if(!turmas[s.turma])turmas[s.turma]={total:0,drawing:0,text:0,reviewed:0,complete:0};
+      turmas[s.turma].total++;
+      if(s.hasDrawing)turmas[s.turma].drawing++;
+      if(s.storyText)turmas[s.turma].text++;
+      if(s.textReviewed)turmas[s.turma].reviewed++;
+      if(s.hasDrawing&&s.storyText&&s.textReviewed)turmas[s.turma].complete++;
+    });
+    const rows=Object.entries(turmas).sort((a,b)=>a[0].localeCompare(b[0])).map(([name,d])=>{
+      const tpct=Math.round(d.complete/d.total*100);
+      const color=tpct>=80?'green':tpct>=50?'blue':tpct>0?'yellow':'red';
+      return `<div class="dash-turma-row">
+        <div class="dash-turma-name">${name}</div>
+        <div class="dash-turma-bar">
+          <div class="progress-bar"><div class="progress-fill ${color}" style="width:${tpct}%"></div></div>
+          <div style="display:flex;gap:8px;margin-top:4px;font-size:10px;color:var(--chalk-gray)">
+            <span>📸 ${d.drawing}/${d.total}</span>
+            <span>📝 ${d.text}/${d.total}</span>
+            <span>✓ ${d.reviewed}/${d.total}</span>
+          </div>
+        </div>
+        <div class="dash-turma-count">${d.complete}/${d.total} (${tpct}%)</div>
+      </div>`;
+    }).join('');
+    return `<div class="dash-unit-card">
+      <div class="dash-unit-head">
+        <h4><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${u.color};margin-right:8px;vertical-align:middle"></span>${u.name}</h4>
+        <span class="badge ${uPct>=80?'badge-done':uPct>=50?'badge-pending':'badge-alert'}">${uPct}%</span>
+      </div>
+      <div class="dash-unit-body">${!us.length?'<p style="color:var(--chalk-gray);font-size:13px;padding:8px 0">Nenhum aluno</p>':rows}</div>
+    </div>`;
+  }).join('');
+}
+
+function editTeacher(unit, turma) {
+  const key = getTeacherKey(unit, turma);
+  const current = turmaTeachers[key] || '';
+  const name = prompt(`Professor(a) responsável pela turma ${turma}:`, current);
+  if (name === null) return; // cancelled
+  if (name.trim()) {
+    turmaTeachers[key] = name.trim();
+  } else {
+    delete turmaTeachers[key];
+  }
+  save(); renderAll();
+}
+
+async function resetSeed() {
+  if(!confirm('Isso apaga TODOS os dados atuais e recarrega a lista original de 1.889 alunos. Continuar?')) return;
+  students = [];
+  localStorage.removeItem('em_students');
+  await seedStudents();
+  renderUnits(); renderAll(); populateSelects();
+  alert('Base recarregada com sucesso!');
+}
+
+init();
+</script>
+</body>
+</html>
