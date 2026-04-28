@@ -127,106 +127,202 @@ select:disabled { opacity: .5; cursor: not-allowed; }
 .upload-success { background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 14px; text-align: center; color: #15803d; font-weight: 600; margin-top: 10px; }
 
 footer { margin-top: auto; padding: 20px; text-align: center; font-size: 12px; color: var(--chalk-gray); }
+
+/* LOGIN */
+.login-screen {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #1e3a5f 0%, #1e40af 100%);
+}
+.login-box {
+  background: var(--paper-white); border-radius: 16px; padding: 40px 32px;
+  width: 100%; max-width: 380px; box-shadow: 0 20px 60px rgba(0,0,0,.3);
+  text-align: center;
+}
+.login-box h2 { font-size: 22px; font-weight: 800; color: var(--ink); margin-bottom: 4px; }
+.login-box p { font-size: 13px; color: var(--chalk-gray); margin-bottom: 24px; }
+.login-box input {
+  width: 100%; padding: 14px 16px; border: 1px solid var(--notebook-line);
+  border-radius: 8px; font-size: 15px; font-family: inherit; outline: none;
+  margin-bottom: 12px; transition: border .2s;
+}
+.login-box input:focus { border-color: var(--binding-blue); }
+.login-btn {
+  width: 100%; padding: 14px; background: var(--binding-blue); color: #fff;
+  border: none; border-radius: 8px; font-size: 16px; font-weight: 700;
+  cursor: pointer; font-family: inherit; transition: all .15s; margin-top: 4px;
+}
+.login-btn:hover { background: #1d4ed8; }
+.login-btn:disabled { opacity: .6; cursor: not-allowed; }
+.login-error { color: #dc2626; font-size: 13px; margin-top: 8px; display: none; }
+
+/* PROF PANEL HEADER */
+.prof-header {
+  width: 100%; background: var(--binding-blue); padding: 14px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.prof-header-left { display: flex; align-items: center; gap: 12px; }
+.prof-header h1 { color: #fff; font-size: 18px; font-weight: 700; }
+.prof-header .prof-badge {
+  background: rgba(255,255,255,.15); color: #fff; padding: 4px 12px;
+  border-radius: 20px; font-size: 12px; font-weight: 600;
+}
+.prof-logout {
+  background: rgba(255,255,255,.1); color: #fff; border: 1px solid rgba(255,255,255,.2);
+  padding: 6px 14px; border-radius: 6px; font-size: 12px; cursor: pointer;
+  font-family: inherit; transition: all .15s;
+}
+.prof-logout:hover { background: rgba(255,255,255,.2); }
+
+/* STATS BAR */
+.prof-stats {
+  display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;
+}
+.prof-stat {
+  flex: 1; min-width: 100px; background: var(--paper-white); border: 1px solid var(--notebook-line);
+  border-radius: 10px; padding: 14px; text-align: center;
+}
+.prof-stat-value { font-size: 24px; font-weight: 800; color: var(--binding-blue); }
+.prof-stat-label { font-size: 11px; color: var(--chalk-gray); font-weight: 600; text-transform: uppercase; margin-top: 2px; }
+
+/* STUDENT LIST */
+.student-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; background: var(--paper-white); border: 1px solid var(--notebook-line);
+  border-radius: 8px; margin-bottom: 8px; transition: all .15s;
+}
+.student-row:hover { border-color: var(--binding-blue); }
+.student-row-name { font-size: 14px; font-weight: 600; }
+.student-row-meta { font-size: 11px; color: var(--chalk-gray); margin-top: 2px; }
+.badge-sm { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 700; }
+.badge-ok { background: #dcfce7; color: #15803d; }
+.badge-wait { background: #fef3c7; color: #92400e; }
+.badge-empty { background: var(--chalk-gray-light, #f1f5f9); color: var(--chalk-gray); }
 </style>
 </head>
 <body>
 
-<header>
-  <h1>📚 FLIPED</h1>
-  <span>Folha de Desenho & Upload</span>
-</header>
-
-<div class="container">
-  <div class="step">
-    <span class="step-num">1</span>
-    <span class="step-title">Escolha a unidade</span>
-    <div class="step-body">
-      <select id="selUnit" onchange="onUnitChange()">
-        <option value="">Selecione a unidade...</option>
-      </select>
-    </div>
-  </div>
-
-  <div class="step">
-    <span class="step-num">2</span>
-    <span class="step-title">Escolha a turma</span>
-    <div class="step-body">
-      <select id="selTurma" disabled onchange="onTurmaChange()">
-        <option value="">Selecione a turma...</option>
-      </select>
-    </div>
-  </div>
-
-  <div class="step">
-    <span class="step-num">3</span>
-    <span class="step-title">Escolha o aluno</span>
-    <div class="step-body">
-      <select id="selAluno" disabled onchange="onAlunoChange()">
-        <option value="">Selecione o aluno...</option>
-      </select>
-    </div>
-  </div>
-
-  <div class="student-card" id="studentCard">
-    <div class="student-name" id="cardName"></div>
-    <div class="student-info" id="cardInfo"></div>
-    <div class="student-code" id="cardCode"></div>
-    <br>
-    <button class="btn-download" onclick="downloadPDF()">📄 Baixar Folha de Desenho</button>
-    <button class="btn-all" id="btnAll" onclick="downloadAllTurma()">📋 Baixar TODAS da turma (PDF único)</button>
-  </div>
-
-  <!-- UPLOAD SECTION -->
-  <div class="step upload-section" id="uploadSection" style="display:none">
-    <span class="step-num">4</span>
-    <span class="step-title">Enviar desenho + história</span>
-    <div class="step-body">
-      <div class="upload-tabs">
-        <button class="upload-tab active" onclick="setUploadMode('individual')">📷 Individual</button>
-        <button class="upload-tab" onclick="setUploadMode('lote')">📦 Em lote (turma)</button>
-      </div>
-
-      <!-- Individual upload -->
-      <div id="uploadIndividual">
-        <div id="uploadIndivTarget" style="font-size:13px;font-weight:600;color:var(--binding-blue);margin-bottom:8px"></div>
-        <div class="upload-zone" id="dropZoneIndiv" onclick="document.getElementById('fileIndiv').click()">
-          <div class="upload-zone-icon">📸</div>
-          <div class="upload-zone-text" id="fileIndivLabel">Clique ou arraste o <strong>desenho escaneado</strong></div>
-          <input type="file" id="fileIndiv" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="onIndivFile(this)">
-        </div>
-        <label style="font-size:12px;font-weight:600;color:var(--chalk-gray);display:block;margin-top:10px">📝 Texto da história</label>
-        <textarea class="text-area" id="textIndiv" placeholder="Digite ou cole o texto da história do aluno..."></textarea>
-        <button class="btn-upload" id="btnUploadIndiv" onclick="doUploadIndiv()" disabled>✓ Enviar desenho + texto</button>
-        <div class="upload-success" id="successIndiv" style="display:none">✓ Enviado com sucesso!</div>
-      </div>
-
-      <!-- Batch upload -->
-      <div id="uploadLote" style="display:none">
-        <p style="font-size:12px;color:var(--chalk-gray);margin-bottom:10px">Selecione vários arquivos de uma vez. Cada arquivo será vinculado ao aluno pelo nome do arquivo ou sequência.</p>
-        <div class="upload-zone" id="dropZoneLote" onclick="document.getElementById('fileLote').click()">
-          <div class="upload-zone-icon">📦</div>
-          <div class="upload-zone-text">Clique ou arraste <strong>vários arquivos</strong> da turma</div>
-          <input type="file" id="fileLote" accept=".pdf,.jpg,.jpeg,.png" style="display:none" multiple onchange="onLoteFiles(this)">
-        </div>
-        <div class="upload-preview" id="lotePreview"></div>
-        <button class="btn-upload" id="btnUploadLote" onclick="doUploadLote()" disabled>✓ Enviar todos</button>
-        <div class="upload-success" id="successLote" style="display:none"></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="info-box">
-    <h4>📌 Como funciona a identificação</h4>
-    <p>Cada folha tem um <strong>código único</strong> no rodapé (ex: COC-LF-3ANOA-007) e um <strong>QR Code grande</strong> no canto. Quando vocês escanearem as folhas em lote, o sistema lê o QR Code e identifica automaticamente o aluno, turma e unidade.</p>
-  </div>
-
-  <div class="empty-msg" id="emptyMsg" style="display:none">
-    <strong>Nenhum aluno cadastrado ainda</strong>
-    Peça ao coordenador para importar a lista de alunos no sistema principal.
+<!-- ═══ TELA DE LOGIN ═══ -->
+<div id="loginScreen" class="login-screen">
+  <div class="login-box">
+    <h2>FLIPED</h2>
+    <p>Acesse seu painel de professor</p>
+    <input type="text" id="loginName" placeholder="Seu nome" autocomplete="off">
+    <input type="password" id="loginPassword" placeholder="Senha" autocomplete="off">
+    <button class="login-btn" id="loginBtn" onclick="doLogin()">Entrar</button>
+    <div class="login-error" id="loginError"></div>
   </div>
 </div>
 
-<footer>Grupo PED — FLIPED 2026</footer>
+<!-- ═══ PAINEL DO PROFESSOR (escondido até login) ═══ -->
+<div id="profPanel" style="display:none; width:100%; min-height:100vh; flex-direction:column; align-items:center;">
+
+<div class="prof-header">
+  <div class="prof-header-left">
+    <h1>FLIPED</h1>
+    <span class="prof-badge" id="profBadge"></span>
+  </div>
+  <button class="prof-logout" onclick="doLogout()">Sair</button>
+</div>
+
+<div class="container" style="max-width:600px">
+  <!-- Stats -->
+  <div class="prof-stats" id="profStats"></div>
+
+  <!-- Tabs: Alunos | Folhas | Upload -->
+  <div style="display:flex;gap:4px;margin-bottom:16px">
+    <button class="upload-tab active" onclick="showProfTab('alunos')" id="profTabAlunos">Meus Alunos</button>
+    <button class="upload-tab" onclick="showProfTab('folhas')" id="profTabFolhas">Folhas PDF</button>
+    <button class="upload-tab" onclick="showProfTab('upload')" id="profTabUpload">Upload</button>
+  </div>
+
+  <!-- TAB: Alunos -->
+  <div id="profTabContentAlunos">
+    <div id="profAlunosList"></div>
+  </div>
+
+  <!-- TAB: Folhas PDF (gerar/baixar) -->
+  <div id="profTabContentFolhas" style="display:none">
+    <div class="step">
+      <span class="step-num">1</span>
+      <span class="step-title">Escolha a turma</span>
+      <div class="step-body">
+        <select id="selTurmaProf" onchange="onProfTurmaChange()">
+          <option value="">Selecione a turma...</option>
+        </select>
+      </div>
+    </div>
+    <div class="step">
+      <span class="step-num">2</span>
+      <span class="step-title">Escolha o aluno</span>
+      <div class="step-body">
+        <select id="selAlunoProf" disabled onchange="onProfAlunoChange()">
+          <option value="">Selecione o aluno...</option>
+        </select>
+      </div>
+    </div>
+    <div class="student-card" id="studentCardProf">
+      <div class="student-name" id="cardNameProf"></div>
+      <div class="student-info" id="cardInfoProf"></div>
+      <div class="student-code" id="cardCodeProf"></div>
+      <br>
+      <button class="btn-download" onclick="downloadPDF()">Baixar Folha de Desenho</button>
+      <button class="btn-all" onclick="downloadAllTurma()">Baixar TODAS da turma (PDF unico)</button>
+    </div>
+  </div>
+
+  <!-- TAB: Upload -->
+  <div id="profTabContentUpload" style="display:none">
+    <div class="step">
+      <span class="step-num">1</span>
+      <span class="step-title">Selecione turma e aluno</span>
+      <div class="step-body">
+        <select id="selTurmaUpload" onchange="onUploadTurmaChange()" style="margin-bottom:8px">
+          <option value="">Selecione a turma...</option>
+        </select>
+        <select id="selAlunoUpload" disabled onchange="onUploadAlunoChange()">
+          <option value="">Selecione o aluno...</option>
+        </select>
+      </div>
+    </div>
+    <div class="step upload-section" id="uploadSection" style="display:none">
+      <span class="step-num">2</span>
+      <span class="step-title">Enviar desenho + historia</span>
+      <div class="step-body">
+        <div class="upload-tabs" id="uploadModeTabs">
+          <button class="upload-tab active" onclick="setUploadMode('individual')">Individual</button>
+          <button class="upload-tab" onclick="setUploadMode('lote')">Em lote (turma)</button>
+        </div>
+        <div id="uploadIndividual">
+          <div id="uploadIndivTarget" style="font-size:13px;font-weight:600;color:var(--binding-blue);margin-bottom:8px"></div>
+          <div class="upload-zone" id="dropZoneIndiv" onclick="document.getElementById('fileIndiv').click()">
+            <div class="upload-zone-icon">📸</div>
+            <div class="upload-zone-text" id="fileIndivLabel">Clique ou arraste o <strong>desenho escaneado</strong></div>
+            <input type="file" id="fileIndiv" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="onIndivFile(this)">
+          </div>
+          <label style="font-size:12px;font-weight:600;color:var(--chalk-gray);display:block;margin-top:10px">Texto da historia</label>
+          <textarea class="text-area" id="textIndiv" placeholder="Digite ou cole o texto da historia do aluno..."></textarea>
+          <button class="btn-upload" id="btnUploadIndiv" onclick="doUploadIndiv()" disabled>Enviar desenho + texto</button>
+          <div class="upload-success" id="successIndiv" style="display:none">Enviado com sucesso!</div>
+        </div>
+        <div id="uploadLote" style="display:none">
+          <p style="font-size:12px;color:var(--chalk-gray);margin-bottom:10px">Selecione varios arquivos de uma vez.</p>
+          <div class="upload-zone" id="dropZoneLote" onclick="document.getElementById('fileLote').click()">
+            <div class="upload-zone-icon">📦</div>
+            <div class="upload-zone-text">Clique ou arraste <strong>varios arquivos</strong> da turma</div>
+            <input type="file" id="fileLote" accept=".pdf,.jpg,.jpeg,.png" style="display:none" multiple onchange="onLoteFiles(this)">
+          </div>
+          <div class="upload-preview" id="lotePreview"></div>
+          <button class="btn-upload" id="btnUploadLote" onclick="doUploadLote()" disabled>Enviar todos</button>
+          <div class="upload-success" id="successLote" style="display:none"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<footer style="display:none">Grupo PED — FLIPED 2026</footer>
 
 <div id="qr-temp" style="position:absolute;left:-9999px;top:-9999px"></div>
 
@@ -243,6 +339,7 @@ const UNITS = [
 
 let students = JSON.parse(localStorage.getItem('em_students') || '[]');
 let selectedStudent = null;
+let loggedProfessor = null; // { id, name, unit, turmas[] }
 
 function genCode(s) {
   const u = UNITS.find(x => x.id === s.unit);
@@ -267,71 +364,193 @@ async function seedStudents() {
       });
     });
     localStorage.setItem('em_students', JSON.stringify(students));
-    console.log(`Seed: ${data.length} alunos carregados`);
-  } catch(e) { console.log('Seed não disponível:', e); }
+  } catch(e) {}
 }
 
-async function init() {
-  await seedStudents();
-  const sel = document.getElementById('selUnit');
-  UNITS.forEach(u => {
-    const count = students.filter(s => s.unit === u.id).length;
-    if (count > 0) {
-      const opt = document.createElement('option');
-      opt.value = u.id;
-      opt.textContent = `${u.name} (${count} alunos)`;
-      sel.appendChild(opt);
+// ═══ LOGIN ═══
+async function doLogin() {
+  const name = document.getElementById('loginName').value.trim();
+  const password = document.getElementById('loginPassword').value.trim();
+  const errEl = document.getElementById('loginError');
+  const btn = document.getElementById('loginBtn');
+
+  if (!name || !password) { errEl.textContent = 'Preencha nome e senha'; errEl.style.display = ''; return; }
+
+  btn.disabled = true; btn.textContent = 'Entrando...';
+  errEl.style.display = 'none';
+
+  try {
+    const res = await fetch('/api/professor/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, password })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      loggedProfessor = data.professor;
+      sessionStorage.setItem('fliped_prof', JSON.stringify(loggedProfessor));
+      showProfPanel();
+    } else {
+      errEl.textContent = data.error || 'Nome ou senha incorretos';
+      errEl.style.display = '';
     }
-  });
-  if (!students.length) document.getElementById('emptyMsg').style.display = 'block';
+  } catch(e) {
+    errEl.textContent = 'Erro de conexao. Tente novamente.';
+    errEl.style.display = '';
+  }
+  btn.disabled = false; btn.textContent = 'Entrar';
 }
 
-function onUnitChange() {
-  const unit = document.getElementById('selUnit').value;
-  const selTurma = document.getElementById('selTurma');
-  const selAluno = document.getElementById('selAluno');
-  selTurma.innerHTML = '<option value="">Selecione a turma...</option>';
-  selAluno.innerHTML = '<option value="">Selecione o aluno...</option>';
-  selAluno.disabled = true;
-  document.getElementById('studentCard').classList.remove('show');
-  if (!unit) { selTurma.disabled = true; return; }
-  const turmas = [...new Set(students.filter(s => s.unit === unit).map(s => s.turma))].sort();
-  turmas.forEach(t => {
-    const c = students.filter(s => s.unit === unit && s.turma === t).length;
-    const opt = document.createElement('option');
-    opt.value = t; opt.textContent = `${t} (${c} alunos)`;
-    selTurma.appendChild(opt);
-  });
-  selTurma.disabled = false;
+function doLogout() {
+  loggedProfessor = null;
+  sessionStorage.removeItem('fliped_prof');
+  document.getElementById('loginScreen').style.display = '';
+  document.getElementById('profPanel').style.display = 'none';
 }
 
-function onTurmaChange() {
-  const unit = document.getElementById('selUnit').value;
-  const turma = document.getElementById('selTurma').value;
-  const selAluno = document.getElementById('selAluno');
-  selAluno.innerHTML = '<option value="">Selecione o aluno...</option>';
-  document.getElementById('studentCard').classList.remove('show');
-  if (!turma) { selAluno.disabled = true; return; }
-  const alunos = students.filter(s => s.unit === unit && s.turma === turma).sort((a,b) => a.name.localeCompare(b.name));
+function showProfPanel() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('profPanel').style.display = 'flex';
+
+  const u = UNITS.find(x => x.id === loggedProfessor.unit);
+  document.getElementById('profBadge').textContent = `${loggedProfessor.name} — ${u ? u.name : ''}`;
+
+  populateProfSelects();
+  renderProfStats();
+  renderProfAlunos();
+}
+
+// Filtra apenas alunos do professor
+function myStudents() {
+  return students.filter(s => s.unit === loggedProfessor.unit && loggedProfessor.turmas.includes(s.turma));
+}
+
+function renderProfStats() {
+  const mine = myStudents();
+  const total = mine.length;
+  const withDrawing = mine.filter(s => s.hasDrawing).length;
+  const withText = mine.filter(s => s.storyText).length;
+  const complete = mine.filter(s => s.hasDrawing && s.storyText).length;
+
+  document.getElementById('profStats').innerHTML = `
+    <div class="prof-stat"><div class="prof-stat-value">${total}</div><div class="prof-stat-label">Alunos</div></div>
+    <div class="prof-stat"><div class="prof-stat-value" style="color:#15803d">${withDrawing}</div><div class="prof-stat-label">Desenhos</div></div>
+    <div class="prof-stat"><div class="prof-stat-value" style="color:#2563eb">${withText}</div><div class="prof-stat-label">Textos</div></div>
+    <div class="prof-stat"><div class="prof-stat-value" style="color:${complete===total&&total>0?'#15803d':'#92400e'}">${total?Math.round(complete/total*100):0}%</div><div class="prof-stat-label">Completo</div></div>
+  `;
+}
+
+function renderProfAlunos() {
+  const mine = myStudents().sort((a,b) => a.turma.localeCompare(b.turma) || a.name.localeCompare(b.name));
+  const container = document.getElementById('profAlunosList');
+
+  if (!mine.length) {
+    container.innerHTML = '<div style="text-align:center;padding:30px;color:var(--chalk-gray)">Nenhum aluno nas suas turmas.</div>';
+    return;
+  }
+
+  let currentTurma = '';
+  let html = '';
+  mine.forEach(s => {
+    if (s.turma !== currentTurma) {
+      currentTurma = s.turma;
+      html += `<div style="font-size:13px;font-weight:700;color:var(--binding-blue);margin:16px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--notebook-line)">${currentTurma}</div>`;
+    }
+    const drawBadge = s.hasDrawing ? '<span class="badge-sm badge-ok">Desenho</span>' : '<span class="badge-sm badge-empty">Sem desenho</span>';
+    const textBadge = s.storyText ? '<span class="badge-sm badge-ok">Texto</span>' : '<span class="badge-sm badge-empty">Sem texto</span>';
+    html += `<div class="student-row">
+      <div><div class="student-row-name">${s.name}</div><div class="student-row-meta">${drawBadge} ${textBadge}</div></div>
+    </div>`;
+  });
+  container.innerHTML = html;
+}
+
+function populateProfSelects() {
+  const turmas = loggedProfessor.turmas.sort();
+
+  // Tab Folhas
+  const selTurma = document.getElementById('selTurmaProf');
+  selTurma.innerHTML = '<option value="">Selecione a turma...</option>' +
+    turmas.map(t => `<option value="${t}">${t}</option>`).join('');
+
+  // Tab Upload
+  const selTurmaUp = document.getElementById('selTurmaUpload');
+  selTurmaUp.innerHTML = '<option value="">Selecione a turma...</option>' +
+    turmas.map(t => `<option value="${t}">${t}</option>`).join('');
+}
+
+function showProfTab(tab) {
+  ['alunos','folhas','upload'].forEach(t => {
+    document.getElementById('profTabContent' + t.charAt(0).toUpperCase() + t.slice(1)).style.display = t === tab ? '' : 'none';
+    document.getElementById('profTab' + t.charAt(0).toUpperCase() + t.slice(1)).classList.toggle('active', t === tab);
+  });
+  if (tab === 'alunos') { renderProfStats(); renderProfAlunos(); }
+}
+
+// Tab Folhas: selects
+function onProfTurmaChange() {
+  const turma = document.getElementById('selTurmaProf').value;
+  const sel = document.getElementById('selAlunoProf');
+  sel.innerHTML = '<option value="">Selecione o aluno...</option>';
+  document.getElementById('studentCardProf').classList.remove('show');
+  if (!turma) { sel.disabled = true; return; }
+  const alunos = students.filter(s => s.unit === loggedProfessor.unit && s.turma === turma).sort((a,b) => a.name.localeCompare(b.name));
   alunos.forEach(s => {
     const opt = document.createElement('option');
     opt.value = s.id; opt.textContent = s.name;
-    selAluno.appendChild(opt);
+    sel.appendChild(opt);
   });
-  selAluno.disabled = false;
+  sel.disabled = false;
 }
 
-function onAlunoChange() {
-  const id = document.getElementById('selAluno').value;
-  if (!id) { document.getElementById('studentCard').classList.remove('show'); return; }
+function onProfAlunoChange() {
+  const id = document.getElementById('selAlunoProf').value;
+  if (!id) { document.getElementById('studentCardProf').classList.remove('show'); return; }
   selectedStudent = students.find(s => s.id === id);
   const u = UNITS.find(x => x.id === selectedStudent.unit);
-  document.getElementById('cardName').textContent = selectedStudent.name;
-  document.getElementById('cardInfo').textContent = `${selectedStudent.turma} — ${u ? u.name : ''}`;
-  document.getElementById('cardCode').textContent = genCode(selectedStudent);
-  const turmaCount = students.filter(s => s.unit === selectedStudent.unit && s.turma === selectedStudent.turma).length;
-  document.getElementById('btnAll').textContent = `📋 Baixar TODAS as ${turmaCount} folhas da turma (PDF único)`;
-  document.getElementById('studentCard').classList.add('show');
+  document.getElementById('cardNameProf').textContent = selectedStudent.name;
+  document.getElementById('cardInfoProf').textContent = `${selectedStudent.turma} — ${u ? u.name : ''}`;
+  document.getElementById('cardCodeProf').textContent = genCode(selectedStudent);
+  document.getElementById('studentCardProf').classList.add('show');
+}
+
+// Tab Upload: selects
+function onUploadTurmaChange() {
+  const turma = document.getElementById('selTurmaUpload').value;
+  const sel = document.getElementById('selAlunoUpload');
+  sel.innerHTML = '<option value="">Selecione o aluno...</option>';
+  document.getElementById('uploadSection').style.display = 'none';
+  if (!turma) { sel.disabled = true; return; }
+  const alunos = students.filter(s => s.unit === loggedProfessor.unit && s.turma === turma).sort((a,b) => a.name.localeCompare(b.name));
+  alunos.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.id; opt.textContent = s.name;
+    sel.appendChild(opt);
+  });
+  sel.disabled = false;
+}
+
+function onUploadAlunoChange() {
+  const id = document.getElementById('selAlunoUpload').value;
+  if (!id) { document.getElementById('uploadSection').style.display = 'none'; return; }
+  selectedStudent = students.find(s => s.id === id);
+  showUploadSection();
+}
+
+// Enter key on login
+document.getElementById('loginPassword').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+document.getElementById('loginName').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('loginPassword').focus(); });
+
+// Init
+async function init() {
+  await seedStudents();
+  // Check session
+  const saved = sessionStorage.getItem('fliped_prof');
+  if (saved) {
+    loggedProfessor = JSON.parse(saved);
+    showProfPanel();
+  }
 }
 
 // ═══ PDF GENERATION ═══
@@ -482,7 +701,7 @@ let loteFiles = [];
 
 function setUploadMode(mode) {
   uploadMode = mode;
-  document.querySelectorAll('.upload-tab').forEach((t, i) => {
+  document.querySelectorAll('#uploadModeTabs .upload-tab').forEach((t, i) => {
     t.classList.toggle('active', (i === 0 && mode === 'individual') || (i === 1 && mode === 'lote'));
   });
   document.getElementById('uploadIndividual').style.display = mode === 'individual' ? '' : 'none';
@@ -684,13 +903,6 @@ async function doUploadLote() {
 
 // Listen for text input changes
 document.getElementById('textIndiv').addEventListener('input', updateIndivBtn);
-
-// Override onAlunoChange to also show upload section
-const _origAlunoChange = onAlunoChange;
-onAlunoChange = function() {
-  _origAlunoChange();
-  showUploadSection();
-};
 
 init();
 </script>

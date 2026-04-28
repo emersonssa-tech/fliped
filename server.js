@@ -102,6 +102,32 @@ async function uploadToDrive(fileBuffer, fileName, mimeType, folderId) {
   return res.data;
 }
 
+// ═══ PROFESSORES (persistência em JSON) ═══
+const DATA_DIR = path.join(__dirname, 'data');
+const PROFESSORS_FILE = path.join(DATA_DIR, 'professors.json');
+
+function ensureDataDir() {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+function loadProfessors() {
+  ensureDataDir();
+  if (fs.existsSync(PROFESSORS_FILE)) {
+    return JSON.parse(fs.readFileSync(PROFESSORS_FILE, 'utf8'));
+  }
+  return [];
+}
+
+function saveProfessors(profs) {
+  ensureDataDir();
+  fs.writeFileSync(PROFESSORS_FILE, JSON.stringify(profs, null, 2), 'utf8');
+}
+
+// Gerar ID curto único
+function genId() {
+  return Math.random().toString(36).substring(2, 10);
+}
+
 // ═══ STATIC FILES ═══
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
@@ -221,6 +247,84 @@ app.delete('/api/files/:fileId', async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// ═══ PROFESSORES — CRUD ═══
+
+// Listar todos (para o painel admin)
+app.get('/api/professors', (req, res) => {
+  const profs = loadProfessors();
+  // Não expor senha no listing
+  res.json(profs.map(p => ({ ...p, password: '***' })));
+});
+
+// Criar professor
+app.post('/api/professors', (req, res) => {
+  const { name, password, unit, turmas } = req.body;
+  if (!name || !password || !unit || !turmas || !turmas.length) {
+    return res.status(400).json({ error: 'Campos obrigatórios: name, password, unit, turmas[]' });
+  }
+  const profs = loadProfessors();
+  const prof = {
+    id: genId(),
+    name,
+    password,
+    unit,
+    turmas, // array de turmas: ["Grupo 2", "Grupo 3"]
+    createdAt: new Date().toISOString()
+  };
+  profs.push(prof);
+  saveProfessors(profs);
+  res.json({ success: true, professor: { ...prof, password: '***' } });
+});
+
+// Atualizar professor
+app.put('/api/professors/:id', (req, res) => {
+  const profs = loadProfessors();
+  const idx = profs.findIndex(p => p.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Professor não encontrado' });
+
+  const { name, password, unit, turmas } = req.body;
+  if (name) profs[idx].name = name;
+  if (password) profs[idx].password = password;
+  if (unit) profs[idx].unit = unit;
+  if (turmas) profs[idx].turmas = turmas;
+
+  saveProfessors(profs);
+  res.json({ success: true, professor: { ...profs[idx], password: '***' } });
+});
+
+// Deletar professor
+app.delete('/api/professors/:id', (req, res) => {
+  let profs = loadProfessors();
+  profs = profs.filter(p => p.id !== req.params.id);
+  saveProfessors(profs);
+  res.json({ success: true });
+});
+
+// ═══ LOGIN DO PROFESSOR ═══
+app.post('/api/professor/login', (req, res) => {
+  const { name, password } = req.body;
+  if (!name || !password) {
+    return res.status(400).json({ error: 'Informe nome e senha' });
+  }
+  const profs = loadProfessors();
+  const prof = profs.find(p =>
+    p.name.toLowerCase() === name.toLowerCase() && p.password === password
+  );
+  if (!prof) {
+    return res.status(401).json({ error: 'Nome ou senha incorretos' });
+  }
+  // Retorna dados do professor (sem senha)
+  res.json({
+    success: true,
+    professor: {
+      id: prof.id,
+      name: prof.name,
+      unit: prof.unit,
+      turmas: prof.turmas
+    }
+  });
 });
 
 // ═══ START ═══

@@ -246,6 +246,9 @@ tbody tr:last-child td { border-bottom: none; }
     <button class="nav-btn" onclick="showPage('dashboard')">
       <span class="nav-icon">📊</span><span>Painel Marketing</span>
     </button>
+    <button class="nav-btn" onclick="showPage('professores')">
+      <span class="nav-icon">🎓</span><span>Professores</span>
+    </button>
   </nav>
 </aside>
 
@@ -319,6 +322,32 @@ tbody tr:last-child td { border-bottom: none; }
   <div class="content page" id="page-dashboard">
     <div class="stats-row" id="dashStats"></div>
     <div class="dash-grid" id="dashGrid"></div>
+  </div>
+
+  <div class="content page" id="page-professores">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h3 style="font-size:16px;font-weight:700">Professores Cadastrados</h3>
+      <button class="btn btn-primary" onclick="openAddProfessor()">+ Novo Professor</button>
+    </div>
+    <p style="font-size:13px;color:var(--chalk-gray);margin-bottom:16px">Cada professor recebe um <strong>link exclusivo com senha</strong>. Ao acessar, vê apenas os alunos das turmas dele, pode fazer upload dos desenhos e acompanhar o progresso.</p>
+    <div id="professorsList" style="display:flex;flex-direction:column;gap:12px"></div>
+  </div>
+</div>
+
+<!-- MODAL: ADD PROFESSOR -->
+<div class="modal-overlay" id="modalProfessor">
+  <div class="modal">
+    <div class="modal-head"><h3 id="modalProfTitle">Cadastrar Professor</h3><button class="modal-close" onclick="closeModal('modalProfessor')">&times;</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label>Nome do Professor(a)</label><input type="text" id="profName" placeholder="Ex: Maria Silva"></div>
+      <div class="form-group"><label>Senha de Acesso</label><input type="text" id="profPassword" placeholder="Senha que o professor usará para acessar"></div>
+      <div class="form-group"><label>Unidade</label><select id="profUnit" onchange="loadProfTurmas()"></select></div>
+      <div class="form-group"><label>Turmas (selecione uma ou mais)</label>
+        <div id="profTurmasContainer" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px"></div>
+      </div>
+      <input type="hidden" id="profEditId" value="">
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal('modalProfessor')">Cancelar</button><button class="btn btn-primary" onclick="saveProfessor()">Salvar</button></div>
   </div>
 </div>
 
@@ -476,10 +505,10 @@ function showPage(p) {
   document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
   document.getElementById('page-' + p).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
-  const idx = ['alunos','upload','revisao','dashboard'].indexOf(p);
+  const idx = ['alunos','upload','revisao','dashboard','professores'].indexOf(p);
   document.querySelectorAll('.nav-btn')[idx].classList.add('active');
 
-  const titles = { alunos:'Alunos & Geração de PDF', upload:'Upload Desenho + Texto', revisao:'Revisão de Textos', dashboard:'Painel Marketing' };
+  const titles = { alunos:'Alunos & Geração de PDF', upload:'Upload Desenho + Texto', revisao:'Revisão de Textos', dashboard:'Painel Marketing', professores:'Gestão de Professores' };
   document.getElementById('topbarTitle').textContent = titles[p];
   document.getElementById('topbarActions').style.display = p === 'alunos' ? 'flex' : 'none';
   renderAll();
@@ -490,6 +519,7 @@ function renderAll() {
   if (currentPage === 'upload') { renderUploadStats(); renderUploadList(); }
   if (currentPage === 'revisao') { renderRevisao(); }
   if (currentPage === 'dashboard') { renderDashboard(); }
+  if (currentPage === 'professores') { renderProfessors(); }
 }
 
 function filtered() { return currentUnit ? students.filter(s => s.unit === currentUnit) : students; }
@@ -910,6 +940,132 @@ function editTeacher(unit, turma) {
     delete turmaTeachers[key];
   }
   save(); renderAll();
+}
+
+// ═══ GESTÃO DE PROFESSORES ═══
+let cachedProfessors = [];
+
+async function fetchProfessors() {
+  try {
+    const res = await fetch('/api/professors');
+    cachedProfessors = await res.json();
+  } catch(e) { cachedProfessors = []; }
+}
+
+async function renderProfessors() {
+  await fetchProfessors();
+  const container = document.getElementById('professorsList');
+  if (!cachedProfessors.length) {
+    container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--chalk-gray)">Nenhum professor cadastrado ainda.<br>Clique em <strong>+ Novo Professor</strong> para começar.</div>';
+    return;
+  }
+
+  const baseUrl = window.location.origin + '/professor.html';
+  container.innerHTML = cachedProfessors.map(p => {
+    const u = UNITS.find(x => x.id === p.unit);
+    const turmasBadges = (p.turmas||[]).map(t => `<span style="background:var(--binding-blue-light);color:var(--binding-blue);padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">${t}</span>`).join(' ');
+    const link = baseUrl;
+    return `<div style="background:var(--paper-white);border:1px solid var(--notebook-line);border-radius:10px;padding:16px;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:15px;font-weight:700;color:var(--ink)">${p.name}</div>
+        <div style="font-size:12px;color:var(--chalk-gray);margin-top:2px">${u?u.name:p.unit} — ${turmasBadges}</div>
+        <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
+          <span style="font-size:11px;background:var(--chalk-gray-light);padding:3px 8px;border-radius:6px;color:var(--ink);font-family:monospace">${link}</span>
+          <span style="font-size:11px;color:var(--chalk-gray)">Senha: <strong>${p.password === '***' ? '***' : p.password}</strong></span>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm" onclick="editProfessor('${p.id}')" title="Editar">✏️</button>
+        <button class="btn btn-sm" onclick="deleteProfessor('${p.id}','${p.name}')" title="Excluir" style="color:var(--eraser-pink)">🗑️</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openAddProfessor() {
+  document.getElementById('profEditId').value = '';
+  document.getElementById('profName').value = '';
+  document.getElementById('profPassword').value = '';
+  document.getElementById('modalProfTitle').textContent = 'Cadastrar Professor';
+  // Populate units
+  const sel = document.getElementById('profUnit');
+  sel.innerHTML = UNITS.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
+  loadProfTurmas();
+  document.getElementById('modalProfessor').classList.add('show');
+}
+
+function loadProfTurmas() {
+  const unitId = document.getElementById('profUnit').value;
+  const turmas = [...new Set(students.filter(s => s.unit === unitId).map(s => s.turma))].sort();
+  const container = document.getElementById('profTurmasContainer');
+  const editId = document.getElementById('profEditId').value;
+  const editing = cachedProfessors.find(p => p.id === editId);
+  const selectedTurmas = editing ? (editing.turmas || []) : [];
+
+  container.innerHTML = turmas.length
+    ? turmas.map(t => {
+      const checked = selectedTurmas.includes(t) ? 'checked' : '';
+      return `<label style="display:flex;align-items:center;gap:4px;padding:4px 10px;background:var(--chalk-gray-light);border-radius:6px;font-size:12px;cursor:pointer">
+        <input type="checkbox" class="profTurmaCheck" value="${t}" ${checked}> ${t}
+      </label>`;
+    }).join('')
+    : '<span style="color:var(--chalk-gray);font-size:12px">Nenhuma turma encontrada nesta unidade</span>';
+}
+
+async function saveProfessor() {
+  const name = document.getElementById('profName').value.trim();
+  const password = document.getElementById('profPassword').value.trim();
+  const unit = document.getElementById('profUnit').value;
+  const turmas = Array.from(document.querySelectorAll('.profTurmaCheck:checked')).map(c => c.value);
+  const editId = document.getElementById('profEditId').value;
+
+  if (!name || !password) { alert('Preencha nome e senha'); return; }
+  if (!turmas.length) { alert('Selecione pelo menos uma turma'); return; }
+
+  try {
+    const url = editId ? `/api/professors/${editId}` : '/api/professors';
+    const method = editId ? 'PUT' : 'POST';
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, password, unit, turmas })
+    });
+    const data = await res.json();
+    if (data.success) {
+      // Atualizar turmaTeachers local
+      turmas.forEach(t => {
+        const key = getTeacherKey(unit, t);
+        turmaTeachers[key] = name;
+      });
+      save();
+      closeModal('modalProfessor');
+      renderProfessors();
+    } else {
+      alert(data.error || 'Erro ao salvar');
+    }
+  } catch(e) { alert('Erro de conexão: ' + e.message); }
+}
+
+async function editProfessor(id) {
+  await fetchProfessors();
+  const p = cachedProfessors.find(x => x.id === id);
+  if (!p) return;
+  document.getElementById('profEditId').value = id;
+  document.getElementById('profName').value = p.name;
+  document.getElementById('profPassword').value = '';
+  document.getElementById('modalProfTitle').textContent = 'Editar Professor';
+  const sel = document.getElementById('profUnit');
+  sel.innerHTML = UNITS.map(u => `<option value="${u.id}" ${u.id===p.unit?'selected':''}>${u.name}</option>`).join('');
+  loadProfTurmas();
+  document.getElementById('modalProfessor').classList.add('show');
+}
+
+async function deleteProfessor(id, name) {
+  if (!confirm(`Excluir o acesso de ${name}?`)) return;
+  try {
+    await fetch(`/api/professors/${id}`, { method: 'DELETE' });
+    renderProfessors();
+  } catch(e) { alert('Erro: ' + e.message); }
 }
 
 async function resetSeed() {
