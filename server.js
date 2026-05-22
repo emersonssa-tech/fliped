@@ -103,7 +103,7 @@ async function uploadToDrive(fileBuffer, fileName, mimeType, folderId) {
 }
 
 // ═══ PROFESSORES (persistência em JSON) ═══
-const DATA_DIR = path.join(__dirname, 'data');
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const PROFESSORS_FILE = path.join(DATA_DIR, 'professors.json');
 
 function ensureDataDir() {
