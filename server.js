@@ -106,6 +106,27 @@ async function uploadToDrive(fileBuffer, fileName, mimeType, folderId) {
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const PROFESSORS_FILE = path.join(DATA_DIR, 'professors.json');
 
+// ═══ UPLOADS LOCAIS (Volume persistente) ═══
+const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
+function ensureUploadsDir() {
+  if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+function slug(str) {
+  return String(str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'sem_nome';
+}
+// Salva um buffer no Volume e retorna o link publico
+function saveToVolume(fileBuffer, fileName, unitName, turma) {
+  const dir = path.join(UPLOADS_DIR, slug(unitName), slug(turma));
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, fileName), fileBuffer);
+  return {
+    name: fileName,
+    link: `/uploads/${slug(unitName)}/${slug(turma)}/${encodeURIComponent(fileName)}`,
+    size: fileBuffer.length
+  };
+}
+
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 }
@@ -130,6 +151,8 @@ function genId() {
 
 // ═══ STATIC FILES ═══
 app.use(express.static(path.join(__dirname, 'public')));
+ensureUploadsDir();
+app.use('/uploads', express.static(UPLOADS_DIR));
 app.use(express.json());
 
 // ═══ HEALTH CHECK ═══
@@ -142,10 +165,9 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// ═══ UPLOAD INDIVIDUAL ═══
+// ═══ UPLOAD INDIVIDUAL (salva no Volume persistente) ═══
 app.post('/api/upload', upload.single('file'), async (req, res) => {
   try {
-    if (!drive) return res.status(503).json({ error: 'Google Drive não configurado' });
     if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado' });
 
     const { studentName, studentId, turma, unitName, storyText } = req.body;
@@ -153,21 +175,20 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: 'Dados do aluno incompletos' });
     }
 
-    const folderId = await getStudentFolder(unitName, turma);
-    const safeName = studentName.replace(/[^a-zA-Z0-9À-ÿ\s]/g, '').replace(/\s+/g, '_');
+    const safeName = slug(studentName);
     const ext = path.extname(req.file.originalname) || '.pdf';
-    const fileName = `${safeName}_${studentId}${ext}`;
+    const fileName = `${safeName}_${studentId || genId()}${ext}`;
 
-    const driveFile = await uploadToDrive(req.file.buffer, fileName, req.file.mimetype, folderId);
+    const saved = saveToVolume(req.file.buffer, fileName, unitName, turma);
 
     res.json({
       success: true,
       file: {
-        id: driveFile.id,
-        name: driveFile.name,
-        link: driveFile.webViewLink,
-        downloadLink: driveFile.webContentLink,
-        size: driveFile.size
+        id: saved.name,
+        name: saved.name,
+        link: saved.link,
+        downloadLink: saved.link,
+        size: saved.size
       },
       studentId,
       storyText: storyText || ''
@@ -178,10 +199,9 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
   }
 });
 
-// ═══ UPLOAD EM LOTE ═══
+// ═══ UPLOAD EM LOTE (salva no Volume persistente) ═══
 app.post('/api/upload-batch', upload.array('files', 50), async (req, res) => {
   try {
-    if (!drive) return res.status(503).json({ error: 'Google Drive não configurado' });
     if (!req.files || !req.files.length) return res.status(400).json({ error: 'Nenhum arquivo enviado' });
 
     const { turma, unitName, studentIds } = req.body;
@@ -190,22 +210,21 @@ app.post('/api/upload-batch', upload.array('files', 50), async (req, res) => {
     }
 
     const ids = JSON.parse(studentIds || '[]');
-    const folderId = await getStudentFolder(unitName, turma);
 
     const results = [];
     for (let i = 0; i < req.files.length; i++) {
       const file = req.files[i];
       const studentId = ids[i] || `batch_${i}`;
       const ext = path.extname(file.originalname) || '.pdf';
-      const fileName = `${turma}_${String(i + 1).padStart(3, '0')}_${studentId}${ext}`;
+      const fileName = `${slug(turma)}_${String(i + 1).padStart(3, '0')}_${studentId}${ext}`;
 
-      const driveFile = await uploadToDrive(file.buffer, fileName, file.mimetype, folderId);
+      const saved = saveToVolume(file.buffer, fileName, unitName, turma);
       results.push({
         index: i,
         studentId,
-        fileId: driveFile.id,
-        link: driveFile.webViewLink,
-        name: driveFile.name
+        fileId: saved.name,
+        link: saved.link,
+        name: saved.name
       });
     }
 
@@ -216,33 +235,40 @@ app.post('/api/upload-batch', upload.array('files', 50), async (req, res) => {
   }
 });
 
-// ═══ LISTAR ARQUIVOS DE UMA PASTA (turma) ═══
+// ═══ LISTAR ARQUIVOS DE UMA TURMA (do Volume) ═══
 app.get('/api/files/:unitName/:turma', async (req, res) => {
   try {
-    if (!drive) return res.status(503).json({ error: 'Google Drive não configurado' });
-
     const { unitName, turma } = req.params;
-    const folderId = await getStudentFolder(unitName, turma);
+    const dir = path.join(UPLOADS_DIR, slug(unitName), slug(turma));
+    if (!fs.existsSync(dir)) return res.json({ success: true, files: [] });
 
-    const list = await drive.files.list({
-      q: `'${folderId}' in parents and trashed=false`,
-      fields: 'files(id, name, webViewLink, size, createdTime, mimeType)',
-      orderBy: 'name',
-      pageSize: 200
+    const files = fs.readdirSync(dir).filter(n => !n.startsWith('.')).sort().map(name => {
+      const st = fs.statSync(path.join(dir, name));
+      return {
+        id: name,
+        name,
+        webViewLink: `/uploads/${slug(unitName)}/${slug(turma)}/${encodeURIComponent(name)}`,
+        link: `/uploads/${slug(unitName)}/${slug(turma)}/${encodeURIComponent(name)}`,
+        size: st.size,
+        createdTime: st.mtime.toISOString()
+      };
     });
 
-    res.json({ success: true, files: list.data.files });
+    res.json({ success: true, files });
   } catch (e) {
     console.error('Erro ao listar arquivos:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
 
-// ═══ DELETAR ARQUIVO DO DRIVE ═══
-app.delete('/api/files/:fileId', async (req, res) => {
+// ═══ DELETAR ARQUIVO (do Volume) ═══
+app.delete('/api/files/:unitName/:turma/:fileName', (req, res) => {
   try {
-    if (!drive) return res.status(503).json({ error: 'Google Drive não configurado' });
-    await drive.files.delete({ fileId: req.params.fileId });
+    const { unitName, turma, fileName } = req.params;
+    const target = path.join(UPLOADS_DIR, slug(unitName), slug(turma), path.basename(fileName));
+    if (!target.startsWith(UPLOADS_DIR)) return res.status(400).json({ error: 'Caminho inválido' });
+    if (!fs.existsSync(target)) return res.status(404).json({ error: 'Arquivo não encontrado' });
+    fs.unlinkSync(target);
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
