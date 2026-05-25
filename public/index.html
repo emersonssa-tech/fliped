@@ -666,16 +666,10 @@ async function generatePDF(studentId) {
   doc.text('TÍTULO DA HISTÓRIA:',m,52); doc.setLineWidth(.5); doc.line(60,52,W-m,52);
 
   // ÁREA DESENHO
-  const dT=58,dB=210;
+  const dT=58,dB=263;
   doc.setDrawColor(30,64,175); doc.setLineWidth(.8); doc.setLineDashPattern([3,2],0);
   doc.roundedRect(m,dT,W-2*m,dB-dT,2,2,'S'); doc.setLineDashPattern([],0);
   // área limpa para desenho
-
-  // LINHAS TEXTO
-  doc.setTextColor(15,23,42); doc.setFontSize(9); doc.setFont('helvetica','bold');
-  doc.text('MINHA HISTÓRIA:',m,216);
-  doc.setDrawColor(226,232,240); doc.setLineWidth(.3);
-  let ly=222; for(let i=0;i<6;i++){doc.line(m,ly,W-m,ly);ly+=7;}
 
   // ══ FAIXA DE IDENTIFICAÇÃO (rodapé escuro) ══
   const footY=H-30;
