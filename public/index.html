@@ -303,7 +303,10 @@ tbody tr:last-child td { border-bottom: none; }
         <h2 style="font-size:18px;font-weight:700">Revisão de Textos</h2>
         <p style="font-size:13px;color:var(--chalk-gray);margin-top:4px">Revise e edite as histórias dos alunos antes de gerar o livro</p>
       </div>
-      <div style="display:flex;gap:8px;align-items:center">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select id="revisaoUnidade" onchange="renderRevisao()" style="padding:7px 12px;border:1px solid var(--notebook-line);border-radius:6px;font-size:13px">
+          <option value="">Todas as unidades</option>
+        </select>
         <select id="revisaoFilter" onchange="renderRevisao()" style="padding:7px 12px;border:1px solid var(--notebook-line);border-radius:6px;font-size:13px">
           <option value="all">Todos</option>
           <option value="with-text">Com texto</option>
@@ -899,7 +902,17 @@ async function doUpload() {
 function renderRevisao() {
   const filter=document.getElementById('revisaoFilter').value;
   const turma=document.getElementById('revisaoTurma').value;
-  let f=filtered();
+  const unidade=document.getElementById('revisaoUnidade').value;
+
+  // Popular dropdown de unidades (uma vez, mantendo seleção)
+  const selU=document.getElementById('revisaoUnidade');
+  const unidadesComAluno=UNITS.filter(u=>students.some(s=>s.unit===u.id));
+  selU.innerHTML='<option value="">Todas as unidades</option>'+
+    unidadesComAluno.map(u=>`<option value="${u.id}" ${u.id===unidade?'selected':''}>${u.name}</option>`).join('');
+
+  // base: respeita a unidade escolhida no filtro da própria página
+  let base=unidade?students.filter(s=>s.unit===unidade):students;
+  let f=base.slice();
   if(turma) f=f.filter(s=>s.turma===turma);
 
   if(filter==='with-text') f=f.filter(s=>s.storyText);
@@ -908,9 +921,9 @@ function renderRevisao() {
 
   f.sort((a,b)=>a.name.localeCompare(b.name));
 
-  // Populate turma select
+  // Popular turma select (turmas da unidade selecionada)
   const sel=document.getElementById('revisaoTurma');
-  const turmas=[...new Set(filtered().map(s=>s.turma))].sort();
+  const turmas=[...new Set(base.map(s=>s.turma))].sort();
   const currentVal=sel.value;
   sel.innerHTML='<option value="">Todas as turmas</option>'+turmas.map(t=>`<option ${t===currentVal?'selected':''}>${t}</option>`).join('');
 
@@ -935,6 +948,11 @@ function renderRevisao() {
       </div>
       <textarea id="text-${s.id}" placeholder="O aluno ainda não tem texto. Digite a história aqui...">${s.storyText||''}</textarea>
       <div class="review-card-actions">
+        ${s.hasDrawing&&s.driveLink
+          ?`<a href="${s.driveLink}" target="_blank" rel="noopener" class="btn btn-sm" style="text-decoration:none">🖼️ Ver desenho</a>`
+          :s.hasDrawing
+            ?`<button class="btn btn-sm" disabled title="Desenho enviado, mas o link não está disponível">🖼️ Desenho enviado</button>`
+            :''}
         <button class="btn btn-sm" onclick="saveText('${s.id}',false)">💾 Salvar rascunho</button>
         <button class="btn btn-sm btn-success" onclick="saveText('${s.id}',true)">✓ Aprovar texto</button>
       </div>
