@@ -683,13 +683,16 @@ async function generatePDF(studentId) {
   doc.setDrawColor(100,116,139); doc.setLineWidth(.3);
   doc.line(W-45,footY+3,W-45,footY+27);
 
-  // QR CODE no rodapé
-  const qrDiv=document.getElementById('qr-temp'); qrDiv.innerHTML='';
-  const qrPayload=JSON.stringify({code,id:s.id,name:s.name,turma:s.turma,unit:s.unit,unitName:u?u.name:''});
+  // QR CODE no rodapé — payload sem acentos (lib qrcodejs conta mal chars acentuados)
+  const qrPayload=JSON.stringify({code,id:s.id,name:s.name,turma:s.turma,unit:s.unit,unitName:u?u.name:''}).normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const qrDiv=document.createElement('div');
+  qrDiv.style.cssText='position:absolute;left:-9999px;top:-9999px';
+  document.body.appendChild(qrDiv);
   new QRCode(qrDiv,{text:qrPayload,width:256,height:256,colorDark:'#ffffff',colorLight:'#0f172a',correctLevel:QRCode.CorrectLevel.M});
   await new Promise(r=>setTimeout(r,250));
   const qrC=qrDiv.querySelector('canvas');
   if(qrC){doc.addImage(qrC.toDataURL('image/png'),'PNG',W-40,footY+2,26,26);}
+  qrDiv.remove();
 
   doc.save(`Folha_${s.name.replace(/\s+/g,'_')}_${code}.pdf`);
   s.pdfGenerated=true; save(); renderAll();
