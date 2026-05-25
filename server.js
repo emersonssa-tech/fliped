@@ -105,6 +105,8 @@ async function uploadToDrive(fileBuffer, fileName, mimeType, folderId) {
 // ═══ PROFESSORES (persistência em JSON) ═══
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const PROFESSORS_FILE = path.join(DATA_DIR, 'professors.json');
+// ═══ ALUNOS / TEXTOS (persistência em JSON, compartilhado entre todos) ═══
+const STUDENTS_FILE = path.join(DATA_DIR, 'students.json');
 
 // ═══ UPLOADS LOCAIS (Volume persistente) ═══
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
@@ -142,6 +144,26 @@ function loadProfessors() {
 function saveProfessors(profs) {
   ensureDataDir();
   fs.writeFileSync(PROFESSORS_FILE, JSON.stringify(profs, null, 2), 'utf8');
+}
+
+// ── Alunos: dados compartilhados de texto/status, indexados por chave estável ──
+// A chave é unit|turma|name (o id muda por navegador, então não serve de chave).
+function studentKey(unit, turma, name) {
+  return [unit, turma, name].map(v => String(v || '').trim().toLowerCase()).join('|');
+}
+
+function loadStudentData() {
+  ensureDataDir();
+  if (fs.existsSync(STUDENTS_FILE)) {
+    try { return JSON.parse(fs.readFileSync(STUDENTS_FILE, 'utf8')); }
+    catch (e) { console.error('students.json corrompido:', e.message); return {}; }
+  }
+  return {};
+}
+
+function saveStudentData(data) {
+  ensureDataDir();
+  fs.writeFileSync(STUDENTS_FILE, JSON.stringify(data, null, 2), 'utf8');
 }
 
 // Gerar ID curto único
@@ -326,6 +348,39 @@ app.delete('/api/professors/:id', (req, res) => {
   profs = profs.filter(p => p.id !== req.params.id);
   saveProfessors(profs);
   res.json({ success: true });
+});
+
+// ═══ ALUNOS — TEXTOS E STATUS (compartilhado entre todos os usuários) ═══
+
+// Retorna todos os dados de alunos salvos no servidor
+app.get('/api/students', (req, res) => {
+  res.json({ success: true, students: loadStudentData() });
+});
+
+// Salva/atualiza o texto e status de um aluno.
+// Body: { unit, turma, name, storyText?, status?, hasDrawing?, textReviewed?, pdfGenerated? }
+app.post('/api/students/save', (req, res) => {
+  try {
+    const { unit, turma, name } = req.body;
+    if (!unit || !turma || !name) {
+      return res.status(400).json({ error: 'unit, turma e name são obrigatórios' });
+    }
+    const data = loadStudentData();
+    const key = studentKey(unit, turma, name);
+    const prev = data[key] || {};
+    const next = { ...prev, unit, turma, name };
+    // só sobrescreve campos que vieram no body (undefined não sobrescreve)
+    ['storyText', 'status', 'hasDrawing', 'textReviewed', 'pdfGenerated', 'driveLink', 'driveFileId'].forEach(f => {
+      if (req.body[f] !== undefined) next[f] = req.body[f];
+    });
+    next.updatedAt = new Date().toISOString();
+    data[key] = next;
+    saveStudentData(data);
+    res.json({ success: true, student: next });
+  } catch (e) {
+    console.error('Erro ao salvar aluno:', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ═══ LOGIN DO PROFESSOR ═══
