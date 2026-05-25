@@ -481,7 +481,7 @@ function genCode(s) {
 async function seedStudents() {
   if (students.length > 0) return;
   try {
-    const res = await fetch('alunos_seed.json');
+    const res = await fetch('alunos_seed.json?t=' + Date.now());
     if (!res.ok) return;
     const data = await res.json();
     data.forEach(s => {
@@ -492,6 +492,47 @@ async function seedStudents() {
       });
     });
     localStorage.setItem('em_students', JSON.stringify(students));
+  } catch(e) {}
+}
+
+// ═══ AUTO-RELOAD DO SEED ═══
+// Detecta quando a lista oficial de alunos mudou (via seed-version.json) e
+// re-sincroniza a lista local sem exigir limpeza de cache. Textos/status
+// dos alunos vêm do servidor, então não se perdem.
+async function checkSeedVersion() {
+  try {
+    const res = await fetch('seed-version.json?t=' + Date.now());
+    if (!res.ok) return;
+    const { version } = await res.json();
+    if (!version) return;
+    const localVersion = localStorage.getItem('em_seed_version');
+    if (localVersion === version) return;
+
+    const seedRes = await fetch('alunos_seed.json?t=' + Date.now());
+    if (!seedRes.ok) return;
+    const seed = await seedRes.json();
+
+    const kun = s => [s.unit, s.name].map(v => String(v||'').trim().toLowerCase()).join('|');
+    const localByUN = {};
+    students.forEach(s => { localByUN[kun(s)] = s; });
+
+    const novaLista = [];
+    seed.forEach(sd => {
+      const existente = localByUN[kun(sd)];
+      if (existente) {
+        existente.turma = sd.turma;
+        novaLista.push(existente);
+      } else {
+        novaLista.push({
+          id: crypto.randomUUID(), name: sd.name, turma: sd.turma, unit: sd.unit,
+          status: 'pending', pdfGenerated: false, uploadedAt: null,
+          storyText: '', textReviewed: false, hasDrawing: false
+        });
+      }
+    });
+    students = novaLista;
+    localStorage.setItem('em_students', JSON.stringify(students));
+    localStorage.setItem('em_seed_version', version);
   } catch(e) {}
 }
 
@@ -716,6 +757,7 @@ document.getElementById('loginName').addEventListener('keydown', e => { if (e.ke
 // Init
 async function init() {
   await seedStudents();
+  await checkSeedVersion();
   await syncStudentsFromServer();
   // Check session
   const saved = sessionStorage.getItem('fliped_prof');
