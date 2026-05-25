@@ -458,7 +458,7 @@ function getTeacher(unit, turma) { return turmaTeachers[getTeacherKey(unit, turm
 async function seedStudents() {
   if (students.length > 0) return;
   try {
-    const res = await fetch('alunos_seed.json');
+    const res = await fetch('alunos_seed.json?t=' + Date.now());
     if (!res.ok) return;
     const data = await res.json();
     data.forEach(s => {
@@ -471,6 +471,55 @@ async function seedStudents() {
     save();
     console.log(`Seed: ${data.length} alunos carregados`);
   } catch(e) { console.log('Seed não disponível:', e); }
+}
+
+// ═══ AUTO-RELOAD DO SEED ═══
+// Quando a lista oficial de alunos muda (turmas corrigidas, novos alunos),
+// o seed-version.json ganha uma versão nova. O front detecta e re-sincroniza
+// a lista local SEM perder textos/status (que vêm do servidor) nem exigir
+// que o usuário limpe o cache.
+async function checkSeedVersion() {
+  try {
+    const res = await fetch('seed-version.json?t=' + Date.now());
+    if (!res.ok) return;
+    const { version } = await res.json();
+    if (!version) return;
+    const localVersion = localStorage.getItem('em_seed_version');
+    if (localVersion === version) return; // já está na versão atual
+
+    // versão mudou — re-sincronizar a lista com o seed novo
+    const seedRes = await fetch('alunos_seed.json?t=' + Date.now());
+    if (!seedRes.ok) return;
+    const seed = await seedRes.json();
+
+    // índice da lista local por chave estável (unit|turma|name)
+    const k = s => [s.unit, s.turma, s.name].map(v => String(v||'').trim().toLowerCase()).join('|');
+    // índice por unit|name (sem turma) para detectar aluno que só mudou de turma
+    const kun = s => [s.unit, s.name].map(v => String(v||'').trim().toLowerCase()).join('|');
+    const localByUN = {};
+    students.forEach(s => { localByUN[kun(s)] = s; });
+
+    const seedKeys = new Set(seed.map(k));
+    const novaLista = [];
+    seed.forEach(sd => {
+      const existente = localByUN[kun(sd)];
+      if (existente) {
+        // mantém id/textos/status do aluno existente, atualiza só a turma
+        existente.turma = sd.turma;
+        novaLista.push(existente);
+      } else {
+        novaLista.push({
+          id: crypto.randomUUID(), name: sd.name, turma: sd.turma, unit: sd.unit,
+          status: 'pending', pdfGenerated: false, uploadedAt: null,
+          storyText: '', textReviewed: false, hasDrawing: false
+        });
+      }
+    });
+    students = novaLista;
+    save();
+    localStorage.setItem('em_seed_version', version);
+    console.log('Seed atualizado para versão:', version, '— ' + students.length + ' alunos');
+  } catch(e) { console.log('checkSeedVersion falhou:', e); }
 }
 
 // Chave estável de um aluno (o id muda por navegador, não serve entre usuários)
@@ -517,6 +566,7 @@ async function syncStudentToServer(s) {
 // ═══ INIT ═══
 async function init() {
   await seedStudents();
+  await checkSeedVersion();
   await syncStudentsFromServer();
   renderUnits(); renderAll(); populateSelects();
 }
