@@ -768,7 +768,7 @@ async function buildPage(doc, s, pageNum, totalPages) {
     turma: s.turma,
     unit: s.unit,
     unitName: u ? u.name : ''
-  }).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\u00ba/g, 'o').replace(/\u00aa/g, 'a').replace(/[^\x00-\x7F]/g, '');
   const qrDiv = document.createElement('div');
   qrDiv.style.cssText = 'position:absolute;left:-9999px;top:-9999px';
   document.body.appendChild(qrDiv);
