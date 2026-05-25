@@ -684,7 +684,7 @@ async function generatePDF(studentId) {
   doc.line(W-45,footY+3,W-45,footY+27);
 
   // QR CODE no rodapé — payload sem acentos (lib qrcodejs conta mal chars acentuados)
-  const qrPayload=JSON.stringify({code,id:s.id,name:s.name,turma:s.turma,unit:s.unit,unitName:u?u.name:''}).normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const qrPayload=JSON.stringify({code,id:s.id,name:s.name,turma:s.turma,unit:s.unit,unitName:u?u.name:''}).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\u00ba/g,'o').replace(/\u00aa/g,'a').replace(/[^\x00-\x7F]/g,'');
   const qrDiv=document.createElement('div');
   qrDiv.style.cssText='position:absolute;left:-9999px;top:-9999px';
   document.body.appendChild(qrDiv);
