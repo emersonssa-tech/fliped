@@ -473,9 +473,51 @@ async function seedStudents() {
   } catch(e) { console.log('Seed não disponível:', e); }
 }
 
+// Chave estável de um aluno (o id muda por navegador, não serve entre usuários)
+function studentKey(s) {
+  return [s.unit, s.turma, s.name].map(v => String(v || '').trim().toLowerCase()).join('|');
+}
+
+// Puxa do servidor os textos/status salvos por qualquer usuário e mescla na lista local
+async function syncStudentsFromServer() {
+  try {
+    const res = await fetch('/api/students');
+    if (!res.ok) return;
+    const { students: serverData } = await res.json();
+    if (!serverData) return;
+    let changed = false;
+    students.forEach(s => {
+      const sv = serverData[studentKey(s)];
+      if (sv) {
+        ['storyText', 'status', 'hasDrawing', 'textReviewed', 'pdfGenerated', 'driveLink', 'driveFileId'].forEach(f => {
+          if (sv[f] !== undefined && s[f] !== sv[f]) { s[f] = sv[f]; changed = true; }
+        });
+      }
+    });
+    if (changed) save();
+  } catch(e) {}
+}
+
+// Salva o texto/status de um aluno no servidor (compartilhado entre todos)
+async function syncStudentToServer(s) {
+  try {
+    await fetch('/api/students/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        unit: s.unit, turma: s.turma, name: s.name,
+        storyText: s.storyText || '', status: s.status || 'pending',
+        hasDrawing: !!s.hasDrawing, textReviewed: !!s.textReviewed,
+        pdfGenerated: !!s.pdfGenerated, driveLink: s.driveLink || '', driveFileId: s.driveFileId || ''
+      })
+    });
+  } catch(e) {}
+}
+
 // ═══ INIT ═══
 async function init() {
   await seedStudents();
+  await syncStudentsFromServer();
   renderUnits(); renderAll(); populateSelects();
 }
 
@@ -799,7 +841,7 @@ async function doUpload() {
     s.status='done';
     s.uploadedAt=new Date().toISOString();
   }
-  save(); closeModal('modalUpload'); renderAll();
+  save(); syncStudentToServer(s); closeModal('modalUpload'); renderAll();
   alert(`${s.name}: ${uploadFileSelected?'desenho + ':''}${text?'texto ':''}salvo!`);
 }
 
@@ -863,6 +905,7 @@ function saveText(id, approve) {
   }
   if(s.storyText&&s.hasDrawing) s.status='done';
   save();
+  syncStudentToServer(s);
   renderRevisao();
   // Brief visual feedback
   const card=textarea.closest('.review-card');
