@@ -495,6 +495,47 @@ async function seedStudents() {
   } catch(e) {}
 }
 
+// Chave estável de um aluno (o id muda por navegador, não serve entre usuários)
+function studentKey(s) {
+  return [s.unit, s.turma, s.name].map(v => String(v || '').trim().toLowerCase()).join('|');
+}
+
+// Puxa do servidor os textos/status salvos por qualquer usuário e mescla na lista local
+async function syncStudentsFromServer() {
+  try {
+    const res = await fetch('/api/students');
+    if (!res.ok) return;
+    const { students: serverData } = await res.json();
+    if (!serverData) return;
+    let changed = false;
+    students.forEach(s => {
+      const sv = serverData[studentKey(s)];
+      if (sv) {
+        ['storyText', 'status', 'hasDrawing', 'textReviewed', 'pdfGenerated', 'driveLink', 'driveFileId'].forEach(f => {
+          if (sv[f] !== undefined && s[f] !== sv[f]) { s[f] = sv[f]; changed = true; }
+        });
+      }
+    });
+    if (changed) localStorage.setItem('em_students', JSON.stringify(students));
+  } catch(e) {}
+}
+
+// Salva o texto/status de um aluno no servidor (compartilhado entre todos)
+async function syncStudentToServer(s) {
+  try {
+    await fetch('/api/students/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        unit: s.unit, turma: s.turma, name: s.name,
+        storyText: s.storyText || '', status: s.status || 'pending',
+        hasDrawing: !!s.hasDrawing, textReviewed: !!s.textReviewed,
+        pdfGenerated: !!s.pdfGenerated, driveLink: s.driveLink || '', driveFileId: s.driveFileId || ''
+      })
+    });
+  } catch(e) {}
+}
+
 // ═══ LOGIN ═══
 async function doLogin() {
   const name = document.getElementById('loginName').value.trim();
@@ -675,6 +716,7 @@ document.getElementById('loginName').addEventListener('keydown', e => { if (e.ke
 // Init
 async function init() {
   await seedStudents();
+  await syncStudentsFromServer();
   // Check session
   const saved = sessionStorage.getItem('fliped_prof');
   if (saved) {
@@ -900,6 +942,7 @@ async function doUploadIndiv() {
     if (text) s.storyText = text;
     if (s.hasDrawing || s.storyText) { s.status = 'done'; s.uploadedAt = new Date().toISOString(); }
     localStorage.setItem('em_students', JSON.stringify(students));
+    await syncStudentToServer(s);
     successEl.textContent = '✓ Enviado com sucesso ao Google Drive!';
     successEl.style.display = '';
     setTimeout(() => { successEl.style.display = 'none'; }, 4000);
@@ -909,6 +952,7 @@ async function doUploadIndiv() {
     if (text) s.storyText = text;
     if (s.hasDrawing || s.storyText) { s.status = 'done'; s.uploadedAt = new Date().toISOString(); }
     localStorage.setItem('em_students', JSON.stringify(students));
+    await syncStudentToServer(s);
     successEl.textContent = e.message.includes('503') || e.message.includes('não configurado')
       ? '⚠ Google Drive não configurado — salvo localmente'
       : '⚠ ' + e.message + ' — salvo localmente';
@@ -978,6 +1022,7 @@ async function doUploadLote() {
         }
       });
       localStorage.setItem('em_students', JSON.stringify(students));
+      for (const st of turmaStudents) { await syncStudentToServer(st); }
       el.textContent = `✓ ${data.uploaded} arquivo(s) enviados ao Google Drive — turma ${selectedStudent.turma}`;
       el.style.display = '';
     } else {
@@ -995,6 +1040,7 @@ async function doUploadLote() {
       }
     });
     localStorage.setItem('em_students', JSON.stringify(students));
+    for (const st of turmaStudents) { await syncStudentToServer(st); }
     el.textContent = e.message.includes('503') || e.message.includes('não configurado')
       ? `⚠ Google Drive não configurado — ${matched} arquivo(s) salvos localmente`
       : `⚠ ${e.message} — ${matched} arquivo(s) salvos localmente`;
