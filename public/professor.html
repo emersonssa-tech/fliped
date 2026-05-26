@@ -6,6 +6,7 @@
 <title>FLIPED — Portal do Professor</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');
 
@@ -370,6 +371,15 @@ footer { margin-top: auto; padding: 20px; text-align: center; font-size: 12px; c
 
   <!-- TAB: Folhas PDF (gerar/baixar) -->
   <div id="profTabContentFolhas" style="display:none">
+    <!-- Download em massa (turma toda) -->
+    <div style="background:linear-gradient(135deg,#1B3654,#243B5C);color:#fff;border-radius:14px;padding:16px 18px;margin-bottom:16px;display:flex;flex-wrap:wrap;align-items:center;gap:12px;box-shadow:0 4px 12px rgba(27,54,84,.18)">
+      <div style="flex:1;min-width:200px">
+        <div style="font-weight:800;font-size:15px;margin-bottom:4px">📦 Baixar folhas da turma toda</div>
+        <div style="font-size:12px;opacity:.85" id="bulkInfoLine">Escolha uma turma abaixo e gere todas as folhas de uma vez para imprimir e entregar.</div>
+      </div>
+      <button class="btn-download" id="btnBulkZip" onclick="downloadZipTurma()" disabled style="margin:0">📦 Baixar ZIP (1 PDF por aluno)</button>
+      <button class="btn-all" id="btnBulkPdf" onclick="downloadAllTurmaFromBulk()" disabled style="margin:0">📄 PDF único</button>
+    </div>
     <div class="step">
       <span class="step-num">1</span>
       <span class="step-title">Escolha a turma</span>
@@ -706,7 +716,17 @@ function onProfTurmaChange() {
   const sel = document.getElementById('selAlunoProf');
   sel.innerHTML = '<option value="">Selecione o aluno...</option>';
   document.getElementById('studentCardProf').classList.remove('show');
-  if (!turma) { sel.disabled = true; return; }
+  // Botões de download em massa
+  const btnZip = document.getElementById('btnBulkZip');
+  const btnPdf = document.getElementById('btnBulkPdf');
+  const info = document.getElementById('bulkInfoLine');
+  if (!turma) {
+    sel.disabled = true;
+    if (btnZip) btnZip.disabled = true;
+    if (btnPdf) btnPdf.disabled = true;
+    if (info) info.textContent = 'Escolha uma turma abaixo e gere todas as folhas de uma vez para imprimir e entregar.';
+    return;
+  }
   const alunos = students.filter(s => s.unit === loggedProfessor.unit && s.turma === turma).sort((a,b) => a.name.localeCompare(b.name));
   alunos.forEach(s => {
     const opt = document.createElement('option');
@@ -714,6 +734,9 @@ function onProfTurmaChange() {
     sel.appendChild(opt);
   });
   sel.disabled = false;
+  if (btnZip) btnZip.disabled = alunos.length === 0;
+  if (btnPdf) btnPdf.disabled = alunos.length === 0;
+  if (info) info.textContent = `Turma ${turma}: ${alunos.length} aluno${alunos.length===1?'':'s'} prontos para gerar as folhas.`;
 }
 
 function onProfAlunoChange() {
@@ -902,6 +925,107 @@ async function downloadAllTurma() {
   const u = UNITS.find(x => x.id === selectedStudent.unit);
   const fname = `Turma_${selectedStudent.turma.replace(/\s+/g, '_')}_${u ? u.short : 'PED'}_Todas_Folhas.pdf`;
   doc.save(fname);
+}
+
+// ═══ DOWNLOAD EM MASSA (a partir da barra do topo, sem precisar selecionar aluno) ═══
+
+// Obtém os alunos da turma escolhida no select do topo da aba Folhas PDF
+function getBulkTurmaStudents() {
+  const turma = document.getElementById('selTurmaProf').value;
+  if (!turma || !loggedProfessor) return [];
+  return students
+    .filter(s => s.unit === loggedProfessor.unit && s.turma === turma)
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// Gera PDF único da turma — versão acionada pelo botão do topo
+async function downloadAllTurmaFromBulk() {
+  const turmaStudents = getBulkTurmaStudents();
+  if (!turmaStudents.length) {
+    alert('Escolha uma turma primeiro.');
+    return;
+  }
+  const turma = turmaStudents[0].turma;
+  if (!confirm(`Baixar PDF único com ${turmaStudents.length} folhas da turma ${turma}?`)) return;
+
+  const btn = document.getElementById('btnBulkPdf');
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '⏳ Gerando...';
+
+  try {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    for (let i = 0; i < turmaStudents.length; i++) {
+      if (i > 0) doc.addPage();
+      btn.textContent = `⏳ ${i + 1}/${turmaStudents.length}...`;
+      await buildPage(doc, turmaStudents[i], i + 1, turmaStudents.length);
+    }
+    const u = UNITS.find(x => x.id === turmaStudents[0].unit);
+    const fname = `Turma_${turma.replace(/\s+/g, '_')}_${u ? u.short : 'PED'}_Todas_Folhas.pdf`;
+    doc.save(fname);
+  } catch (e) {
+    alert('Erro ao gerar PDF: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
+}
+
+// Gera ZIP com 1 PDF por aluno (cada aluno = arquivo separado)
+async function downloadZipTurma() {
+  const turmaStudents = getBulkTurmaStudents();
+  if (!turmaStudents.length) {
+    alert('Escolha uma turma primeiro.');
+    return;
+  }
+  if (typeof JSZip === 'undefined') {
+    alert('Biblioteca de ZIP não carregada. Recarregue a página.');
+    return;
+  }
+  const turma = turmaStudents[0].turma;
+  if (!confirm(`Baixar ZIP com ${turmaStudents.length} PDFs individuais da turma ${turma}?\n\nCada aluno terá seu próprio arquivo.`)) return;
+
+  const btn = document.getElementById('btnBulkZip');
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '⏳ Gerando...';
+
+  try {
+    const { jsPDF } = window.jspdf;
+    const zip = new JSZip();
+
+    for (let i = 0; i < turmaStudents.length; i++) {
+      const s = turmaStudents[i];
+      btn.textContent = `⏳ ${i + 1}/${turmaStudents.length} — ${s.name.split(' ')[0]}...`;
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      await buildPage(doc, s, 1, 1);
+      // jsPDF retorna ArrayBuffer com 'arraybuffer'
+      const pdfBlob = doc.output('arraybuffer');
+      const safeName = s.name.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_\-]/g, '');
+      const code = genCode(s);
+      zip.file(`${String(i + 1).padStart(3, '0')}_${safeName}_${code}.pdf`, pdfBlob);
+    }
+
+    btn.textContent = '⏳ Compactando...';
+    const u = UNITS.find(x => x.id === turmaStudents[0].unit);
+    const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+    const zipName = `Folhas_${turma.replace(/\s+/g, '_')}_${u ? u.short : 'PED'}.zip`;
+
+    // Trigger download
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(zipBlob);
+    a.download = zipName;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  } catch (e) {
+    alert('Erro ao gerar ZIP: ' + e.message);
+    console.error(e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
 }
 
 // ═══ UPLOAD FUNCTIONS ═══
