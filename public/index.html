@@ -381,6 +381,21 @@ tbody tr:last-child td { border-bottom: none; }
   </div>
 </div>
 
+<!-- MODAL: EDITAR ALUNO -->
+<div class="modal-overlay" id="modalEdit">
+  <div class="modal">
+    <div class="modal-head"><h3>Editar Aluno</h3><button class="modal-close" onclick="closeModal('modalEdit')">&times;</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="editId">
+      <div class="form-group"><label>Unidade</label><select id="editUnit"></select></div>
+      <div class="form-group"><label>Turma</label><input type="text" id="editTurma" placeholder="Ex: 3º Ano A"></div>
+      <div class="form-group"><label>Nome do Aluno</label><input type="text" id="editName" placeholder="Nome completo"></div>
+      <p id="editWarn" style="font-size:12px;color:var(--chalk-gray);margin-top:8px"></p>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal('modalEdit')">Cancelar</button><button class="btn btn-primary" onclick="doEditStudent()">Salvar correção</button></div>
+  </div>
+</div>
+
 <!-- MODAL: UPLOAD + TEXTO DO ALUNO -->
 <div class="modal-overlay" id="modalUpload">
   <div class="modal">
@@ -407,6 +422,21 @@ tbody tr:last-child td { border-bottom: none; }
     <div class="modal-foot">
       <button class="btn" onclick="closeModal('modalUpload')">Cancelar</button>
       <button class="btn btn-success" onclick="doUpload()">✓ Salvar Upload + Texto</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: PREVIEW DE PDF/IMAGEM -->
+<div class="modal-overlay" id="modalPreview">
+  <div class="modal" style="max-width:min(1100px,95vw);width:95vw">
+    <div class="modal-head">
+      <h3 id="previewTitle" style="margin-right:auto">Visualizar desenho</h3>
+      <a id="previewOpenNew" href="#" target="_blank" rel="noopener" class="btn btn-sm" style="text-decoration:none;margin-right:6px">↗ Nova aba</a>
+      <a id="previewDownload" href="#" download class="btn btn-sm btn-primary" style="text-decoration:none;margin-right:6px">⬇ Baixar</a>
+      <button class="modal-close" onclick="closeModal('modalPreview')">&times;</button>
+    </div>
+    <div class="modal-body" style="padding:0;background:#0f172a;min-height:70vh;display:flex;align-items:center;justify-content:center">
+      <div id="previewContent" style="width:100%;height:75vh;display:flex;align-items:center;justify-content:center"></div>
     </div>
   </div>
 </div>
@@ -664,6 +694,7 @@ function renderTable(filter='') {
       <td>${badge}</td>
       <td style="text-align:right">
         <button class="btn btn-sm btn-primary" onclick="generatePDF('${s.id}')">📄 PDF</button>
+        <button class="btn btn-sm" onclick="openEditStudent('${s.id}')" title="Editar">✏️</button>
         <button class="btn btn-sm" onclick="removeStudent('${s.id}')" title="Remover">🗑</button>
       </td>
     </tr>`;
@@ -676,6 +707,7 @@ function populateSelects() {
   const opts = UNITS.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
   document.getElementById('importUnit').innerHTML = '<option value="">Selecione</option>' + opts;
   document.getElementById('addUnit').innerHTML = opts;
+  document.getElementById('editUnit').innerHTML = opts;
 }
 
 function openImport() { document.getElementById('modalImport').classList.add('show'); }
@@ -720,6 +752,39 @@ function removeStudent(id) {
   if (!confirm('Remover este aluno?')) return;
   students = students.filter(s => s.id !== id);
   save(); renderUnits(); renderAll();
+}
+
+function openEditStudent(id) {
+  const s = students.find(x => x.id === id);
+  if (!s) return;
+  document.getElementById('editId').value = s.id;
+  document.getElementById('editUnit').value = s.unit;
+  document.getElementById('editTurma').value = s.turma;
+  document.getElementById('editName').value = s.name;
+  const warn = document.getElementById('editWarn');
+  warn.textContent = s.storyText
+    ? '⚠️ Este aluno já tem história escrita. Mudar nome/turma/unidade pode desvincular o texto salvo.'
+    : 'Aluno sem texto — correção segura.';
+  document.getElementById('modalEdit').classList.add('show');
+}
+
+function doEditStudent() {
+  const id = document.getElementById('editId').value;
+  const s = students.find(x => x.id === id);
+  if (!s) return;
+  const unit = document.getElementById('editUnit').value;
+  const turma = document.getElementById('editTurma').value.trim();
+  const name = document.getElementById('editName').value.trim();
+  if (!unit || !turma || !name) { alert('Preencha todos os campos'); return; }
+  if (unit === s.unit && turma === s.turma && name === s.name) { closeModal('modalEdit'); return; }
+  const oldCode = genCode(s);
+  s.unit = unit; s.turma = turma; s.name = name;
+  const newCode = genCode(s);
+  if (oldCode !== newCode && s.pdfGenerated) {
+    alert('Atenção: o código de identificação mudou de ' + oldCode + ' para ' + newCode + '. Gere o PDF novamente para esse aluno.');
+  }
+  save(); closeModal('modalEdit');
+  renderUnits(); renderAll();
 }
 
 // ═══ PDF ═══
@@ -982,12 +1047,45 @@ function saveText(id, approve) {
 }
 
 // ═══ DASHBOARD MARKETING ═══
-function renderDashboard() {
+// Cache dos arquivos vindos do servidor (/api/files-all) — indexado por (unitSlug|turmaSlug)
+let dashFilesCache = { byKey: {}, byStudentId: {} };
+let dashExpanded = {};       // { 'unitId': true } — turmas abertas
+let dashSelection = new Set(); // ids "unitSlug|turmaSlug|filename" selecionados
+
+// MESMA regra do slug() do server.js — remove diacríticos e normaliza
+function dashSlug(str){
+  return String(str||'').normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .replace(/[^a-zA-Z0-9]+/g,'_').replace(/^_+|_+$/g,'') || 'sem_nome';
+}
+
+async function loadDashFiles(){
+  try {
+    const res = await fetch('/api/files-all');
+    const data = await res.json();
+    const byKey = {};
+    const byStudentId = {};
+    (data.files||[]).forEach(f => {
+      const k = `${f.unitSlug}|${f.turmaSlug}`;
+      (byKey[k] = byKey[k] || []).push(f);
+      // tentar casar pelo studentId no final do nome (ex: maria_silva_abc12345.pdf)
+      const m = f.name.match(/_([a-z0-9]{6,})(?:\.[^.]+)?$/i);
+      if (m) byStudentId[m[1]] = f;
+    });
+    dashFilesCache = { byKey, byStudentId };
+  } catch(e) {
+    dashFilesCache = { byKey: {}, byStudentId: {} };
+  }
+}
+
+async function renderDashboard() {
   const total=students.length;
   const withDrawing=students.filter(s=>s.hasDrawing).length;
   const withText=students.filter(s=>s.storyText).length;
   const complete=students.filter(s=>s.hasDrawing&&s.storyText&&s.textReviewed).length;
   const pct=total?Math.round(complete/total*100):0;
+
+  // carrega arquivos reais do servidor (em paralelo, mas aguardamos antes de renderizar a lista)
+  await loadDashFiles();
 
   document.getElementById('dashStats').innerHTML = `
     <div class="stat-card"><div class="stat-label">Total Alunos</div><div class="stat-value">${total}</div><div class="stat-sub">7 unidades</div></div>
@@ -998,43 +1096,192 @@ function renderDashboard() {
       <div class="stat-sub">${pct}% — desenho + texto revisado</div></div>
   `;
 
-  document.getElementById('dashGrid').innerHTML = UNITS.map(u => {
+  // Barra de ações em massa (visível quando há seleção)
+  const selCount = dashSelection.size;
+  const actionsBar = `
+    <div id="dashActionsBar" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--paper-white);border:1px solid var(--notebook-line);border-radius:10px;padding:10px 14px;margin-bottom:14px">
+      <strong style="font-size:13px;color:var(--ink)">Painel Marketing — Desenhos enviados</strong>
+      <span style="font-size:12px;color:var(--chalk-gray);margin-right:auto">${selCount} selecionado${selCount===1?'':'s'}</span>
+      <button class="btn btn-sm" onclick="dashClearSelection()" ${selCount?'':'disabled'}>Limpar seleção</button>
+      <button class="btn btn-sm btn-primary" onclick="dashDownloadSelection()" ${selCount?'':'disabled'}>⬇ Baixar selecionados (ZIP)</button>
+    </div>
+  `;
+
+  const cards = UNITS.map(u => {
     const us=students.filter(s=>s.unit===u.id);
     const uComplete=us.filter(s=>s.hasDrawing&&s.storyText&&s.textReviewed).length;
     const uPct=us.length?Math.round(uComplete/us.length*100):0;
+
+    // Conta arquivos reais do volume agrupados por turma slug
     const turmas={};
     us.forEach(s=>{
-      if(!turmas[s.turma])turmas[s.turma]={total:0,drawing:0,text:0,reviewed:0,complete:0};
+      if(!turmas[s.turma])turmas[s.turma]={total:0,drawing:0,text:0,reviewed:0,complete:0,students:[]};
       turmas[s.turma].total++;
       if(s.hasDrawing)turmas[s.turma].drawing++;
       if(s.storyText)turmas[s.turma].text++;
       if(s.textReviewed)turmas[s.turma].reviewed++;
       if(s.hasDrawing&&s.storyText&&s.textReviewed)turmas[s.turma].complete++;
+      turmas[s.turma].students.push(s);
     });
-    const rows=Object.entries(turmas).sort((a,b)=>a[0].localeCompare(b[0])).map(([name,d])=>{
+
+    const expanded = !!dashExpanded[u.id];
+    const rows=Object.entries(turmas).sort((a,b)=>a[0].localeCompare(b[0])).map(([turmaName,d])=>{
       const tpct=Math.round(d.complete/d.total*100);
       const color=tpct>=80?'green':tpct>=50?'blue':tpct>0?'yellow':'red';
-      return `<div class="dash-turma-row">
-        <div class="dash-turma-name">${name}</div>
-        <div class="dash-turma-bar">
-          <div class="progress-bar"><div class="progress-fill ${color}" style="width:${tpct}%"></div></div>
-          <div style="display:flex;gap:8px;margin-top:4px;font-size:10px;color:var(--chalk-gray)">
-            <span>📸 ${d.drawing}/${d.total}</span>
-            <span>📝 ${d.text}/${d.total}</span>
-            <span>✓ ${d.reviewed}/${d.total}</span>
+
+      const unitSlug = dashSlug(u.name);
+      const turmaSlug = dashSlug(turmaName);
+      const filesInTurma = dashFilesCache.byKey[`${unitSlug}|${turmaSlug}`] || [];
+      const hasFiles = filesInTurma.length > 0;
+
+      let studentList = '';
+      if (expanded) {
+        studentList = `<div style="margin-top:10px;padding-left:8px;border-left:2px solid var(--notebook-line)">
+          ${hasFiles ? `<div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:6px">
+            <button class="btn btn-sm" onclick="dashDownloadTurma('${u.name.replace(/'/g,"\\'")}','${turmaName.replace(/'/g,"\\'")}')">⬇ Baixar turma (${filesInTurma.length})</button>
+          </div>` : ''}
+          ${d.students.sort((a,b)=>a.name.localeCompare(b.name)).map(s => {
+            // Match: tenta pelo id curto OR pelo nome no arquivo
+            const idShort = String(s.id).slice(0,8).toLowerCase();
+            const nameSlug = dashSlug(s.name).toLowerCase();
+            const match = filesInTurma.find(f => {
+              const fn = f.name.toLowerCase();
+              return fn.includes(idShort) || fn.includes(nameSlug);
+            });
+            if (match) {
+              const selKey = `${unitSlug}|${turmaSlug}|${match.name}`;
+              const checked = dashSelection.has(selKey) ? 'checked' : '';
+              return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;border-bottom:1px dashed var(--notebook-line)">
+                <input type="checkbox" ${checked} onchange="dashToggleSel('${selKey}')" style="cursor:pointer">
+                <span style="flex:1;color:var(--ink)">${s.name}</span>
+                <span style="font-size:10px;color:var(--chalk-gray)">${(match.size/1024).toFixed(0)} KB</span>
+                <button class="btn btn-sm" onclick="dashPreview('${match.link}','${match.name.replace(/'/g,"\\'")}', '${s.name.replace(/'/g,"\\'")}')">👁 Ver</button>
+              </div>`;
+            } else {
+              return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;color:var(--chalk-gray);border-bottom:1px dashed var(--notebook-line)">
+                <span style="width:16px"></span>
+                <span style="flex:1">${s.name}</span>
+                <span style="font-size:10px">sem desenho</span>
+              </div>`;
+            }
+          }).join('')}
+        </div>`;
+      }
+
+      return `<div class="dash-turma-row" style="flex-direction:column;align-items:stretch">
+        <div style="display:flex;align-items:center;gap:10px;cursor:pointer" onclick="dashToggleUnit('${u.id}')">
+          <div class="dash-turma-name" style="flex:0 0 auto">${turmaName}</div>
+          <div class="dash-turma-bar" style="flex:1">
+            <div class="progress-bar"><div class="progress-fill ${color}" style="width:${tpct}%"></div></div>
+            <div style="display:flex;gap:8px;margin-top:4px;font-size:10px;color:var(--chalk-gray)">
+              <span>📸 ${d.drawing}/${d.total}</span>
+              <span>📝 ${d.text}/${d.total}</span>
+              <span>✓ ${d.reviewed}/${d.total}</span>
+              ${hasFiles?`<span style="color:var(--pencil-green);font-weight:600">${filesInTurma.length} arquivo${filesInTurma.length===1?'':'s'}</span>`:''}
+            </div>
           </div>
+          <div class="dash-turma-count">${d.complete}/${d.total} (${tpct}%)</div>
         </div>
-        <div class="dash-turma-count">${d.complete}/${d.total} (${tpct}%)</div>
+        ${studentList}
       </div>`;
     }).join('');
+
+    const unitFileCount = Object.keys(dashFilesCache.byKey)
+      .filter(k => k.startsWith(dashSlug(u.name)+'|'))
+      .reduce((acc,k)=>acc+(dashFilesCache.byKey[k]||[]).length,0);
+
     return `<div class="dash-unit-card">
-      <div class="dash-unit-head">
-        <h4><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${u.color};margin-right:8px;vertical-align:middle"></span>${u.name}</h4>
-        <span class="badge ${uPct>=80?'badge-done':uPct>=50?'badge-pending':'badge-alert'}">${uPct}%</span>
+      <div class="dash-unit-head" style="cursor:pointer" onclick="dashToggleUnit('${u.id}')">
+        <h4 style="display:flex;align-items:center;gap:6px">
+          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${u.color}"></span>
+          <span>${u.name}</span>
+          <span style="font-size:11px;color:var(--chalk-gray);font-weight:400">${expanded?'▼':'▶'}</span>
+        </h4>
+        <div style="display:flex;gap:6px;align-items:center">
+          ${unitFileCount?`<button class="btn btn-sm" onclick="event.stopPropagation();dashDownloadUnit('${u.name.replace(/'/g,"\\'")}')">⬇ Unidade (${unitFileCount})</button>`:''}
+          <span class="badge ${uPct>=80?'badge-done':uPct>=50?'badge-pending':'badge-alert'}">${uPct}%</span>
+        </div>
       </div>
       <div class="dash-unit-body">${!us.length?'<p style="color:var(--chalk-gray);font-size:13px;padding:8px 0">Nenhum aluno</p>':rows}</div>
     </div>`;
   }).join('');
+
+  document.getElementById('dashGrid').innerHTML = actionsBar + cards;
+}
+
+// ── Helpers do painel ──
+function dashToggleUnit(unitId){
+  dashExpanded[unitId] = !dashExpanded[unitId];
+  renderDashboard();
+}
+function dashToggleSel(key){
+  if (dashSelection.has(key)) dashSelection.delete(key);
+  else dashSelection.add(key);
+  renderDashboard();
+}
+function dashClearSelection(){
+  dashSelection.clear();
+  renderDashboard();
+}
+
+// ── Preview de PDF/imagem em modal ──
+function dashPreview(link, fileName, label){
+  const ext = (fileName.split('.').pop()||'').toLowerCase();
+  const content = document.getElementById('previewContent');
+  document.getElementById('previewTitle').textContent = label || fileName;
+  document.getElementById('previewOpenNew').href = link;
+  document.getElementById('previewDownload').href = link;
+  document.getElementById('previewDownload').setAttribute('download', fileName);
+  if (['jpg','jpeg','png','webp','gif'].includes(ext)) {
+    content.innerHTML = `<img src="${link}" alt="${fileName}" style="max-width:100%;max-height:75vh;object-fit:contain;background:#0f172a">`;
+  } else if (ext === 'pdf') {
+    content.innerHTML = `<iframe src="${link}" style="width:100%;height:75vh;border:0;background:#fff"></iframe>`;
+  } else {
+    content.innerHTML = `<div style="color:#cbd5e1;padding:40px;text-align:center">
+      <p>Não é possível pré-visualizar este formato (.${ext}).</p>
+      <p style="margin-top:10px"><a href="${link}" target="_blank" rel="noopener" style="color:#60a5fa">Abrir em nova aba</a></p>
+    </div>`;
+  }
+  document.getElementById('modalPreview').classList.add('show');
+}
+
+// ── Download em massa ──
+async function dashPostZip(body, suggestedName){
+  try {
+    const res = await fetch('/api/zip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(()=>({error:'Falha'}));
+      alert('Erro: ' + (err.error || res.statusText));
+      return;
+    }
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = suggestedName || 'fliped.zip';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);
+  } catch(e) {
+    alert('Erro no download: ' + e.message);
+  }
+}
+function dashDownloadUnit(unitName){
+  dashPostZip({ mode:'unit', unitName }, `fliped_${dashSlug(unitName)}.zip`);
+}
+function dashDownloadTurma(unitName, turma){
+  dashPostZip({ mode:'turma', unitName, turma }, `fliped_${dashSlug(unitName)}_${dashSlug(turma)}.zip`);
+}
+function dashDownloadSelection(){
+  if (!dashSelection.size) return;
+  const files = Array.from(dashSelection).map(k => {
+    const [unitSlug, turmaSlug, name] = k.split('|');
+    return { unitSlug, turmaSlug, name };
+  });
+  dashPostZip({ mode:'selection', files }, `fliped_selecao_${files.length}_arquivos.zip`);
 }
 
 function editTeacher(unit, turma) {

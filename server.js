@@ -4,18 +4,22 @@ const { google } = require('googleapis');
 const path = require('path');
 const fs = require('fs');
 const stream = require('stream');
+const archiver = require('archiver');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ═══ MULTER (temp upload) ═══
+// Limite ampliado para 50MB para preservar resolução original dos desenhos
+// (fotos modernas de celular ficam entre 5-15MB; scans 300dpi A4 podem passar de 20MB).
+// O arquivo é salvo no Volume sem recompressão para manter máxima qualidade.
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB max
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max
   fileFilter: (req, file, cb) => {
-    const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+    const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/tiff'];
     if (allowed.includes(file.mimetype)) cb(null, true);
-    else cb(new Error('Tipo de arquivo não permitido. Use PDF, JPG, PNG ou WebP.'));
+    else cb(new Error('Tipo de arquivo não permitido. Use PDF, JPG, PNG, WebP, HEIC ou TIFF.'));
   }
 });
 
@@ -279,6 +283,123 @@ app.get('/api/files/:unitName/:turma', async (req, res) => {
     res.json({ success: true, files });
   } catch (e) {
     console.error('Erro ao listar arquivos:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ═══ LISTAR TODOS OS ARQUIVOS (varre todo o Volume — usado pelo Painel Marketing) ═══
+app.get('/api/files-all', (req, res) => {
+  try {
+    if (!fs.existsSync(UPLOADS_DIR)) return res.json({ success: true, files: [] });
+
+    const out = [];
+    const unitDirs = fs.readdirSync(UPLOADS_DIR).filter(n => !n.startsWith('.'));
+    for (const uDir of unitDirs) {
+      const unitPath = path.join(UPLOADS_DIR, uDir);
+      if (!fs.statSync(unitPath).isDirectory()) continue;
+      const turmaDirs = fs.readdirSync(unitPath).filter(n => !n.startsWith('.'));
+      for (const tDir of turmaDirs) {
+        const turmaPath = path.join(unitPath, tDir);
+        if (!fs.statSync(turmaPath).isDirectory()) continue;
+        const files = fs.readdirSync(turmaPath).filter(n => !n.startsWith('.'));
+        for (const name of files) {
+          const full = path.join(turmaPath, name);
+          const st = fs.statSync(full);
+          if (!st.isFile()) continue;
+          out.push({
+            unitSlug: uDir,
+            turmaSlug: tDir,
+            id: name,
+            name,
+            link: `/uploads/${uDir}/${tDir}/${encodeURIComponent(name)}`,
+            size: st.size,
+            mtime: st.mtime.toISOString()
+          });
+        }
+      }
+    }
+    res.json({ success: true, files: out });
+  } catch (e) {
+    console.error('Erro ao listar todos os arquivos:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ═══ DOWNLOAD EM MASSA (ZIP) ═══
+// Modos:
+//   POST /api/zip  body: { mode: 'unit', unitName }
+//   POST /api/zip  body: { mode: 'turma', unitName, turma }
+//   POST /api/zip  body: { mode: 'selection', files: [{ unitSlug, turmaSlug, name }] }
+app.post('/api/zip', (req, res) => {
+  try {
+    const { mode } = req.body || {};
+    if (!mode) return res.status(400).json({ error: 'mode é obrigatório (unit, turma ou selection)' });
+
+    // Resolve lista de arquivos absolutos
+    const collected = []; // { abs, rel } — rel é o caminho dentro do ZIP
+    if (mode === 'unit') {
+      const { unitName } = req.body;
+      if (!unitName) return res.status(400).json({ error: 'unitName é obrigatório' });
+      const unitDir = path.join(UPLOADS_DIR, slug(unitName));
+      if (!fs.existsSync(unitDir)) return res.status(404).json({ error: 'Unidade sem desenhos enviados' });
+      const turmas = fs.readdirSync(unitDir).filter(n => !n.startsWith('.'));
+      for (const t of turmas) {
+        const tDir = path.join(unitDir, t);
+        if (!fs.statSync(tDir).isDirectory()) continue;
+        for (const f of fs.readdirSync(tDir).filter(n => !n.startsWith('.'))) {
+          const abs = path.join(tDir, f);
+          if (fs.statSync(abs).isFile()) collected.push({ abs, rel: path.join(t, f) });
+        }
+      }
+    } else if (mode === 'turma') {
+      const { unitName, turma } = req.body;
+      if (!unitName || !turma) return res.status(400).json({ error: 'unitName e turma são obrigatórios' });
+      const tDir = path.join(UPLOADS_DIR, slug(unitName), slug(turma));
+      if (!fs.existsSync(tDir)) return res.status(404).json({ error: 'Turma sem desenhos enviados' });
+      for (const f of fs.readdirSync(tDir).filter(n => !n.startsWith('.'))) {
+        const abs = path.join(tDir, f);
+        if (fs.statSync(abs).isFile()) collected.push({ abs, rel: f });
+      }
+    } else if (mode === 'selection') {
+      const { files } = req.body;
+      if (!Array.isArray(files) || !files.length) {
+        return res.status(400).json({ error: 'files[] é obrigatório para mode=selection' });
+      }
+      for (const item of files) {
+        if (!item || !item.unitSlug || !item.turmaSlug || !item.name) continue;
+        const abs = path.join(UPLOADS_DIR, item.unitSlug, item.turmaSlug, path.basename(item.name));
+        if (!abs.startsWith(UPLOADS_DIR)) continue; // segurança
+        if (fs.existsSync(abs) && fs.statSync(abs).isFile()) {
+          collected.push({ abs, rel: path.join(item.unitSlug, item.turmaSlug, item.name) });
+        }
+      }
+    } else {
+      return res.status(400).json({ error: 'mode inválido' });
+    }
+
+    if (!collected.length) return res.status(404).json({ error: 'Nenhum arquivo encontrado para o filtro selecionado' });
+
+    // Nome do ZIP
+    const stamp = new Date().toISOString().slice(0, 10);
+    let zipName = `fliped_${mode}_${stamp}.zip`;
+    if (mode === 'unit') zipName = `fliped_${slug(req.body.unitName)}_${stamp}.zip`;
+    if (mode === 'turma') zipName = `fliped_${slug(req.body.unitName)}_${slug(req.body.turma)}_${stamp}.zip`;
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${zipName}"`);
+
+    const archive = archiver('zip', { zlib: { level: 6 } });
+    archive.on('error', (err) => {
+      console.error('Erro no archiver:', err.message);
+      try { res.status(500).end(); } catch {}
+    });
+    archive.pipe(res);
+    for (const f of collected) {
+      archive.file(f.abs, { name: f.rel });
+    }
+    archive.finalize();
+  } catch (e) {
+    console.error('Erro no ZIP:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
