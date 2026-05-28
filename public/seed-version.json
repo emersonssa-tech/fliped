@@ -1,5 +1,5 @@
 {
-  "version": "2026-05-28-cajazeiras-turmas",
+  "version": "2026-05-28-cajazeiras-sised",
   "updatedAt": "2026-05-28",
-  "note": "PED Cajazeiras: 500 alunos movidos para turmas com letra (1o A-D, 2o A-F, 3o A-E, 4o A-D, 5o A-E) + 15 novos cadastrados. Origem: Extrato SISED Aguas Claras 28/05/2026."
+  "note": "PED Cajazeiras: turmas renomeadas para o padrao SISED (ex: '1o Ano FB1 MAT', '2o Ano R1 MAT', '3o Ano B5 MAT'). 515 alunos atualizados."
 }
