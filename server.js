@@ -175,8 +175,83 @@ function genId() {
   return Math.random().toString(36).substring(2, 10);
 }
 
-// ═══ STATIC FILES ═══
-app.use(express.static(path.join(__dirname, 'public')));
+// ═══ APP VERSION (cache busting automático) ═══
+// O buildId é um hash SHA-1 do conteúdo dos arquivos críticos do front + server.
+// Toda vez que QUALQUER um deles muda (push no GitHub → redeploy Railway),
+// o hash muda → o front (que checa a cada 60s) recarrega sozinho.
+// Resolve o problema de "Ctrl+Shift+R" em toda alteração de HTML/JS/CSS.
+const crypto = require('crypto');
+function computeBuildId() {
+  const filesToHash = [
+    'index.html',
+    'professor.html',
+    'server.js',
+    'public/alunos_seed.json',
+    'public/seed-version.json',
+  ];
+  const h = crypto.createHash('sha1');
+  for (const rel of filesToHash) {
+    const p = path.join(__dirname, rel);
+    try {
+      h.update(rel + '\0');
+      h.update(fs.readFileSync(p));
+      h.update('\0');
+    } catch (_e) { /* arquivo opcional ausente — ignora */ }
+  }
+  return h.digest('hex').slice(0, 12);
+}
+// Permite override por env var (deploy hash do Railway/GH Actions) caso queira.
+// Senão, calcula a partir do conteúdo. Recalculado no boot do servidor.
+const APP_BUILD_ID = process.env.RAILWAY_GIT_COMMIT_SHA
+  || process.env.GIT_COMMIT
+  || computeBuildId();
+const APP_BUILD_TIME = new Date().toISOString();
+console.log(`FLIPED build id: ${APP_BUILD_ID} @ ${APP_BUILD_TIME}`);
+
+app.get('/api/app-version', (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  res.json({ buildId: APP_BUILD_ID, buildTime: APP_BUILD_TIME });
+});
+
+// ═══ STATIC FILES com política de cache correta ═══
+// Regra: HTML, JSON de dados, seed-version → SEMPRE no-cache (revalidar a cada request).
+//        JS/CSS bundled, imagens → pode cachear (mas sem hash no nome, usamos no-cache também por segurança).
+//
+// Isso resolve o problema do "Ctrl+Shift+R": o browser SEMPRE pede o HTML novo,
+// e o HTML tem dentro o build id atual, que é comparado com o do servidor a cada minuto.
+function setCacheHeaders(res, filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  const name = path.basename(filePath).toLowerCase();
+
+  // HTML, seed-version e dados dinâmicos: NUNCA cachear
+  if (ext === '.html' || name === 'seed-version.json' || name === 'alunos_seed.json') {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+    return;
+  }
+  // JS/CSS/JSON estáticos: cache curto + revalidação
+  if (['.js', '.css', '.json'].includes(ext)) {
+    res.set('Cache-Control', 'public, max-age=60, must-revalidate');
+    return;
+  }
+  // Imagens, fontes: pode cachear mais tempo (uma semana)
+  res.set('Cache-Control', 'public, max-age=604800');
+}
+
+app.use(express.static(path.join(__dirname, 'public'), {
+  etag: true,
+  lastModified: true,
+  setHeaders: setCacheHeaders
+}));
+// Também servir da raiz (compatibilidade com setup atual)
+app.use(express.static(__dirname, {
+  etag: true,
+  lastModified: true,
+  setHeaders: setCacheHeaders
+}));
 ensureUploadsDir();
 app.use('/uploads', express.static(UPLOADS_DIR));
 app.use(express.json());
