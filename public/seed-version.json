@@ -1,5 +1,5 @@
 {
-  "version": "2026-05-28-cajazeiras-sised",
+  "version": "2026-05-28-cajazeiras-sised-v2",
   "updatedAt": "2026-05-28",
-  "note": "PED Cajazeiras: turmas renomeadas para o padrao SISED (ex: '1o Ano FB1 MAT', '2o Ano R1 MAT', '3o Ano B5 MAT'). 515 alunos atualizados."
+  "note": "PED Cajazeiras: turmas renomeadas para o padrao SISED. Modal de preview do PDF com nome+turma+unidade no cabecalho e viewer maior."
 }

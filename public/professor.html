@@ -546,26 +546,48 @@ async function checkSeedVersion() {
   } catch(e) {}
 }
 
-// Chave estável de um aluno (o id muda por navegador, não serve entre usuários)
+// Chave estável de um aluno (o id muda por navegador, não serve entre usuários).
+// Normaliza removendo acentos, espaços duplicados e caixa — diferenças sutis
+// entre o que a professora digitou e o que o coordenador tem na lista local
+// quebravam o merge silenciosamente (textos lançados sumiam pra revisão).
 function studentKey(s) {
-  return [s.unit, s.turma, s.name].map(v => String(v || '').trim().toLowerCase()).join('|');
+  return [s.unit, s.turma, s.name].map(v =>
+    String(v || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[\u00ba\u00b0]/g, 'o').replace(/\u00aa/g, 'a')
+      .trim().toLowerCase().replace(/\s+/g, ' ')
+  ).join('|');
 }
 
-// Puxa do servidor os textos/status salvos por qualquer usuário e mescla na lista local
+// Puxa do servidor os textos/status salvos por qualquer usuário e mescla na lista local.
+// Merge INCLUSIVO: itera pelos registros do servidor — se o aluno não existe
+// localmente (seed dessincronizada / chave divergente), insere; se existe,
+// mescla os campos. Antes iterávamos pela lista local, então registros do
+// servidor sem aluno-par no localStorage do coordenador eram silenciosamente
+// ignorados — era por isso que os textos lançados pela professora não chegavam.
 async function syncStudentsFromServer() {
   try {
     const res = await fetch('/api/students');
     if (!res.ok) return;
     const { students: serverData } = await res.json();
     if (!serverData) return;
+    const FIELDS = ['storyText', 'status', 'hasDrawing', 'textReviewed', 'pdfGenerated', 'driveLink', 'driveFileId'];
+    const byKey = new Map();
+    students.forEach(s => byKey.set(studentKey(s), s));
     let changed = false;
-    students.forEach(s => {
-      const sv = serverData[studentKey(s)];
-      if (sv) {
-        ['storyText', 'status', 'hasDrawing', 'textReviewed', 'pdfGenerated', 'driveLink', 'driveFileId'].forEach(f => {
-          if (sv[f] !== undefined && s[f] !== sv[f]) { s[f] = sv[f]; changed = true; }
-        });
+    Object.values(serverData).forEach(sv => {
+      if (!sv || !sv.unit || !sv.turma || !sv.name) return;
+      const k = studentKey(sv);
+      let s = byKey.get(k);
+      if (!s) {
+        s = { id: Math.random().toString(36).slice(2, 10), unit: sv.unit, turma: sv.turma, name: sv.name };
+        students.push(s);
+        byKey.set(k, s);
+        changed = true;
       }
+      FIELDS.forEach(f => {
+        if (sv[f] !== undefined && s[f] !== sv[f]) { s[f] = sv[f]; changed = true; }
+      });
     });
     if (changed) localStorage.setItem('em_students', JSON.stringify(students));
   } catch(e) {}
@@ -777,8 +799,37 @@ function onUploadAlunoChange() {
 document.getElementById('loginPassword').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
 document.getElementById('loginName').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('loginPassword').focus(); });
 
+// ═══ AUTO-RELOAD em novo deploy (cache busting sem Ctrl+Shift+R) ═══
+let _knownBuildId = null;
+let _reloadingForUpdate = false;
+async function checkAppVersion() {
+  if (_reloadingForUpdate) return;
+  try {
+    const res = await fetch('/api/app-version', { cache: 'no-store' });
+    if (!res.ok) return;
+    const { buildId } = await res.json();
+    if (!buildId) return;
+    if (_knownBuildId === null) { _knownBuildId = buildId; return; }
+    if (buildId !== _knownBuildId) {
+      _reloadingForUpdate = true;
+      try {
+        const banner = document.createElement('div');
+        banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#1e40af;color:#fff;padding:14px 20px;text-align:center;font:600 14px Inter,sans-serif;box-shadow:0 4px 12px rgba(0,0,0,.2)';
+        banner.textContent = 'Nova versão do FLIPED disponível — recarregando...';
+        document.body.appendChild(banner);
+      } catch(e) {}
+      setTimeout(() => {
+        const url = new URL(window.location.href);
+        url.searchParams.set('_v', buildId);
+        window.location.replace(url.toString());
+      }, 1200);
+    }
+  } catch(e) {}
+}
+
 // Init
 async function init() {
+  await checkAppVersion();
   await seedStudents();
   await checkSeedVersion();
   await syncStudentsFromServer();
@@ -788,6 +839,11 @@ async function init() {
     loggedProfessor = JSON.parse(saved);
     showProfPanel();
   }
+  setInterval(checkAppVersion, 60000);
+  window.addEventListener('focus', checkAppVersion);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') checkAppVersion();
+  });
 }
 
 // ═══ PDF GENERATION ═══

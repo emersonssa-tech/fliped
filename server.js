@@ -152,8 +152,15 @@ function saveProfessors(profs) {
 
 // ── Alunos: dados compartilhados de texto/status, indexados por chave estável ──
 // A chave é unit|turma|name (o id muda por navegador, então não serve de chave).
+// Normaliza removendo acentos, espaços duplicados e caixa, pra que diferenças
+// sutis (ex.: "FB1 MAT" vs "FB1  MAT", "1º" vs "1°") não quebrem o merge.
 function studentKey(unit, turma, name) {
-  return [unit, turma, name].map(v => String(v || '').trim().toLowerCase()).join('|');
+  return [unit, turma, name].map(v =>
+    String(v || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[\u00ba\u00b0]/g, 'o').replace(/\u00aa/g, 'a')
+      .trim().toLowerCase().replace(/\s+/g, ' ')
+  ).join('|');
 }
 
 function loadStudentData() {
