@@ -664,8 +664,8 @@ async function init() {
   await checkSeedVersion();
   await syncStudentsFromServer();
   renderUnits(); renderAll(); populateSelects();
-  // Polling a cada 60s — detecta deploy novo enquanto o usuário usa o sistema
-  setInterval(checkAppVersion, 60000);
+  // Polling a cada 15s — detecta deploy novo enquanto o usuário usa o sistema
+  setInterval(checkAppVersion, 15000);
   // Também checa quando a aba volta a ter foco (caso o usuário tenha deixado aberta)
   window.addEventListener('focus', checkAppVersion);
   document.addEventListener('visibilitychange', () => {
