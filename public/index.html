@@ -602,7 +602,22 @@ async function syncStudentsFromServer() {
       });
     });
     if (changed) save();
-  } catch(e) {}
+    return changed;
+  } catch(e) { return false; }
+}
+
+// Polling: a cada 30s puxa do servidor. Se algo mudou (professora salvou
+// texto, marcou revisado, etc.), re-renderiza a tela atual sem F5 do usuário.
+let _syncing = false;
+async function pollSyncStudents() {
+  if (_syncing || _reloadingForUpdate) return;
+  _syncing = true;
+  try {
+    const changed = await syncStudentsFromServer();
+    if (changed) {
+      try { renderUnits(); renderAll(); } catch(e) {}
+    }
+  } finally { _syncing = false; }
 }
 
 // Salva o texto/status de um aluno no servidor (compartilhado entre todos)
@@ -666,10 +681,15 @@ async function init() {
   renderUnits(); renderAll(); populateSelects();
   // Polling a cada 15s — detecta deploy novo enquanto o usuário usa o sistema
   setInterval(checkAppVersion, 15000);
-  // Também checa quando a aba volta a ter foco (caso o usuário tenha deixado aberta)
-  window.addEventListener('focus', checkAppVersion);
+  // Polling a cada 30s — puxa textos novos lançados por professoras
+  setInterval(pollSyncStudents, 30000);
+  // Ao focar a aba, checa ambos imediatamente (caso a aba ficou em segundo plano)
+  window.addEventListener('focus', () => { checkAppVersion(); pollSyncStudents(); });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') checkAppVersion();
+    if (document.visibilityState === 'visible') {
+      checkAppVersion();
+      pollSyncStudents();
+    }
   });
 }
 

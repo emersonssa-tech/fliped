@@ -590,7 +590,21 @@ async function syncStudentsFromServer() {
       });
     });
     if (changed) localStorage.setItem('em_students', JSON.stringify(students));
-  } catch(e) {}
+    return changed;
+  } catch(e) { return false; }
+}
+
+// Polling: a cada 30s puxa textos atualizados (de outros usuários) e re-renderiza.
+let _syncing = false;
+async function pollSyncStudents() {
+  if (_syncing || _reloadingForUpdate) return;
+  _syncing = true;
+  try {
+    const changed = await syncStudentsFromServer();
+    if (changed && loggedProfessor) {
+      try { renderProfStats(); renderProfAlunos(); } catch(e) {}
+    }
+  } finally { _syncing = false; }
 }
 
 // Salva o texto/status de um aluno no servidor (compartilhado entre todos)
@@ -839,10 +853,15 @@ async function init() {
     loggedProfessor = JSON.parse(saved);
     showProfPanel();
   }
-  setInterval(checkAppVersion, 60000);
-  window.addEventListener('focus', checkAppVersion);
+  setInterval(checkAppVersion, 15000);
+  // Polling a cada 30s — puxa textos novos lançados em outros dispositivos
+  setInterval(pollSyncStudents, 30000);
+  window.addEventListener('focus', () => { checkAppVersion(); pollSyncStudents(); });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') checkAppVersion();
+    if (document.visibilityState === 'visible') {
+      checkAppVersion();
+      pollSyncStudents();
+    }
   });
 }
 
