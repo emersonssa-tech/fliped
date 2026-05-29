@@ -586,6 +586,119 @@ app.post('/api/students/save', (req, res) => {
   }
 });
 
+// ═══ MIGRAÇÃO DE CHAVES (admin) ═══
+// Quando o nome da turma muda no alunos_seed.json (ex.: renomeação SISED de
+// Cajazeiras em 2026-05-28), os textos já gravados ficam órfãos: a chave
+// unit|turma|name no servidor não bate mais com a do front. Este endpoint lê
+// o seed atual, e para cada (unit, name) no servidor cuja turma não existe
+// mais, reescreve a chave usando a turma atual. Match por nome normalizado.
+// Protegido por token via header X-Admin-Token (env var ADMIN_TOKEN).
+function loadSeed() {
+  const candidates = [
+    path.join(__dirname, 'public', 'alunos_seed.json'),
+    path.join(__dirname, 'alunos_seed.json'),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) {
+      try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch(_) {}
+    }
+  }
+  return [];
+}
+function normName(s) {
+  return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+app.post('/api/admin/migrate-student-keys', (req, res) => {
+  const token = req.headers['x-admin-token'] || req.query.token;
+  if (!process.env.ADMIN_TOKEN || token !== process.env.ADMIN_TOKEN) {
+    return res.status(401).json({ error: 'token inválido' });
+  }
+  const dryRun = req.query.dryRun === '1' || req.body?.dryRun === true;
+
+  const seed = loadSeed();
+  // Index seed: unit + nome_normalizado -> turma atual
+  const seedIndex = new Map();
+  for (const s of seed) {
+    if (!s.unit || !s.name || !s.turma) continue;
+    const k = `${s.unit}|${normName(s.name)}`;
+    // Se houver dois alunos com mesmo nome na mesma unidade, ignora (não dá pra escolher).
+    if (seedIndex.has(k)) seedIndex.set(k, '__AMBIGUOUS__');
+    else seedIndex.set(k, s.turma);
+  }
+
+  const data = loadStudentData();
+  const oldKeys = Object.keys(data);
+  const result = {
+    total: oldKeys.length,
+    remapped: 0,
+    unchanged: 0,
+    notFoundInSeed: 0,
+    ambiguous: 0,
+    collisions: 0,
+    samples: { remapped: [], notFound: [], ambiguous: [] },
+  };
+  const next = {};
+  for (const k of oldKeys) {
+    const rec = data[k];
+    if (!rec || !rec.unit || !rec.name) { next[k] = rec; continue; }
+    const lookup = `${rec.unit}|${normName(rec.name)}`;
+    const seedTurma = seedIndex.get(lookup);
+    if (!seedTurma) {
+      result.notFoundInSeed++;
+      if (result.samples.notFound.length < 5) result.samples.notFound.push({ unit: rec.unit, turma: rec.turma, name: rec.name });
+      next[k] = rec; // mantém como está
+      continue;
+    }
+    if (seedTurma === '__AMBIGUOUS__') {
+      result.ambiguous++;
+      if (result.samples.ambiguous.length < 5) result.samples.ambiguous.push({ unit: rec.unit, name: rec.name });
+      next[k] = rec;
+      continue;
+    }
+    if (seedTurma === rec.turma) {
+      result.unchanged++;
+      next[k] = rec;
+      continue;
+    }
+    // Remapeia para a turma atual
+    const updated = { ...rec, turma: seedTurma, _migratedFrom: rec.turma, _migratedAt: new Date().toISOString() };
+    const newKey = studentKey(updated.unit, updated.turma, updated.name);
+    if (next[newKey]) {
+      // colisão: já existe registro novo com essa chave (raro). Mantém o mais
+      // recente (por updatedAt). Para não perder texto da professora, prefere
+      // o que tem storyText preenchido.
+      const a = next[newKey], b = updated;
+      const pick = (b.storyText && !a.storyText) ? b
+                 : (a.storyText && !b.storyText) ? a
+                 : (new Date(b.updatedAt || 0) > new Date(a.updatedAt || 0) ? b : a);
+      next[newKey] = pick;
+      result.collisions++;
+    } else {
+      next[newKey] = updated;
+    }
+    result.remapped++;
+    if (result.samples.remapped.length < 5) {
+      result.samples.remapped.push({ unit: rec.unit, name: rec.name, from: rec.turma, to: seedTurma });
+    }
+  }
+
+  if (!dryRun) {
+    // Backup antes de gravar
+    try {
+      const bak = STUDENTS_FILE + '.bak-' + Date.now();
+      if (fs.existsSync(STUDENTS_FILE)) fs.copyFileSync(STUDENTS_FILE, bak);
+      result.backup = path.basename(bak);
+    } catch(e) { result.backupError = e.message; }
+    saveStudentData(next);
+    result.applied = true;
+  } else {
+    result.applied = false;
+  }
+  res.json(result);
+});
+
 // ═══ LOGIN DO PROFESSOR ═══
 app.post('/api/professor/login', (req, res) => {
   const { name, password } = req.body;
