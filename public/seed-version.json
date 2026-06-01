@@ -1,5 +1,5 @@
 {
-  "version": "2026-05-28-cajazeiras-sised-v2",
-  "updatedAt": "2026-05-28",
-  "note": "PED Cajazeiras: turmas renomeadas para o padrao SISED. Modal de preview do PDF com nome+turma+unidade no cabecalho e viewer maior."
+  "version": "2026-06-01-coc-horto-sised",
+  "updatedAt": "2026-06-01",
+  "note": "COC Horto Florestal: lista substituida pelos alunos das listas de presenca do SISED (105 alunos - Infantil Grupo 2/3 e Fundamental 1o ao 5o Ano). Turmas no padrao SISED."
 }
