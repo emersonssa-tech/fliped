@@ -193,6 +193,8 @@ function computeBuildId() {
     'index.html',
     'professor.html',
     'server.js',
+    'version.json',
+    'public/version.json',
     'public/alunos_seed.json',
     'public/seed-version.json',
   ];
@@ -213,13 +215,28 @@ const APP_BUILD_ID = process.env.RAILWAY_GIT_COMMIT_SHA
   || process.env.GIT_COMMIT
   || computeBuildId();
 const APP_BUILD_TIME = new Date().toISOString();
-console.log(`FLIPED build id: ${APP_BUILD_ID} @ ${APP_BUILD_TIME}`);
+
+// Versão legível (exibida ao usuário no aviso de atualização). Lida do version.json.
+// O buildId continua sendo o detector real de mudança (muda a cada deploy);
+// o version.json fornece um número amigável para mostrar na tela.
+function readAppVersion() {
+  for (const rel of ['version.json', 'public/version.json']) {
+    try {
+      const raw = fs.readFileSync(path.join(__dirname, rel), 'utf8');
+      const v = JSON.parse(raw).version;
+      if (v) return String(v);
+    } catch (_e) { /* ausente — tenta o próximo */ }
+  }
+  return null;
+}
+const APP_VERSION = readAppVersion();
+console.log(`FLIPED build id: ${APP_BUILD_ID} (v${APP_VERSION || '?'}) @ ${APP_BUILD_TIME}`);
 
 app.get('/api/app-version', (req, res) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
   res.set('Pragma', 'no-cache');
   res.set('Expires', '0');
-  res.json({ buildId: APP_BUILD_ID, buildTime: APP_BUILD_TIME });
+  res.json({ buildId: APP_BUILD_ID, version: APP_VERSION, buildTime: APP_BUILD_TIME });
 });
 
 // ═══ STATIC FILES com política de cache correta ═══

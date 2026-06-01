@@ -813,32 +813,89 @@ function onUploadAlunoChange() {
 document.getElementById('loginPassword').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
 document.getElementById('loginName').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('loginPassword').focus(); });
 
-// ═══ AUTO-RELOAD em novo deploy (cache busting sem Ctrl+Shift+R) ═══
+// ═══ DETECÇÃO DE NOVA VERSÃO (sem reload automático) ═══
+// Pergunta ao servidor o build id atual a cada 5 min. Se mudou desde que esta aba
+// carregou, EXIBE UM BANNER no topo avisando que há atualização — NUNCA recarrega
+// sozinho, para o usuário não perder dados em edição. Ele decide quando atualizar.
 let _knownBuildId = null;
+let _knownVersion = null;
+let _pendingBuildId = null;
+let _pendingVersion = null;
+let _updateBannerShown = false;
+let _updateSnoozeUntil = 0;
 let _reloadingForUpdate = false;
+
+const UPDATE_SNOOZE_MS = 30 * 60 * 1000; // re-exibir após 30 min ao clicar "Depois"
+
 async function checkAppVersion() {
   if (_reloadingForUpdate) return;
   try {
     const res = await fetch('/api/app-version', { cache: 'no-store' });
     if (!res.ok) return;
-    const { buildId } = await res.json();
+    const { buildId, version } = await res.json();
     if (!buildId) return;
-    if (_knownBuildId === null) { _knownBuildId = buildId; return; }
+    if (_knownBuildId === null) {
+      _knownBuildId = buildId;
+      _knownVersion = version || null;
+      return;
+    }
     if (buildId !== _knownBuildId) {
-      _reloadingForUpdate = true;
-      try {
-        const banner = document.createElement('div');
-        banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#1e40af;color:#fff;padding:14px 20px;text-align:center;font:600 14px Inter,sans-serif;box-shadow:0 4px 12px rgba(0,0,0,.2)';
-        banner.textContent = 'Nova versão do FLIPED disponível — recarregando...';
-        document.body.appendChild(banner);
-      } catch(e) {}
-      setTimeout(() => {
-        const url = new URL(window.location.href);
-        url.searchParams.set('_v', buildId);
-        window.location.replace(url.toString());
-      }, 1200);
+      _pendingBuildId = buildId;
+      _pendingVersion = version || null;
+      if (!_updateBannerShown && Date.now() >= _updateSnoozeUntil) {
+        showUpdateBanner();
+      }
     }
   } catch(e) {}
+}
+
+function showUpdateBanner() {
+  if (_updateBannerShown) return;
+  _updateBannerShown = true;
+
+  const atual = _knownVersion ? ('v' + _knownVersion) : (_knownBuildId || '—').slice(0, 7);
+  const nova  = _pendingVersion ? ('v' + _pendingVersion) : (_pendingBuildId || '—').slice(0, 7);
+
+  const bar = document.createElement('div');
+  bar.id = 'fliped-update-banner';
+  bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#1e40af;color:#fff;'
+    + 'padding:12px 18px;font:14px Inter,system-ui,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.25);'
+    + 'display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap;text-align:center';
+  bar.innerHTML =
+      '<div style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;min-width:240px">'
+    +   '<strong style="font-size:15px">Nova versão do FLIPED disponível</strong>'
+    +   '<span style="opacity:.9;font-size:12.5px">Versão atual: ' + atual + ' &nbsp;→&nbsp; Nova versão: ' + nova + '</span>'
+    +   '<span style="opacity:.9;font-size:12.5px">⚠️ Salve o que estiver editando — atualizar recarrega a página.</span>'
+    + '</div>'
+    + '<div style="display:flex;gap:10px;flex-wrap:wrap">'
+    +   '<button id="fliped-update-now" style="cursor:pointer;border:0;border-radius:8px;padding:9px 16px;font:600 13px Inter,sans-serif;background:#fff;color:#1e40af">Atualizar Agora</button>'
+    +   '<button id="fliped-update-later" style="cursor:pointer;border:1px solid rgba(255,255,255,.6);border-radius:8px;padding:9px 16px;font:600 13px Inter,sans-serif;background:transparent;color:#fff">Depois</button>'
+    + '</div>';
+  document.body.appendChild(bar);
+
+  document.getElementById('fliped-update-now').addEventListener('click', applyUpdate);
+  document.getElementById('fliped-update-later').addEventListener('click', dismissUpdateBanner);
+}
+
+function dismissUpdateBanner() {
+  const bar = document.getElementById('fliped-update-banner');
+  if (bar) bar.remove();
+  _updateBannerShown = false;
+  _updateSnoozeUntil = Date.now() + UPDATE_SNOOZE_MS;
+}
+
+async function applyUpdate() {
+  _reloadingForUpdate = true;
+  const targetBuildId = _pendingBuildId || _knownBuildId || Date.now();
+  try {
+    if (window.caches && caches.keys) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+  } catch(e) {}
+  const url = new URL(window.location.href);
+  url.searchParams.set('_v', String(targetBuildId));
+  window.location.replace(url.toString());
 }
 
 // Init
@@ -853,7 +910,8 @@ async function init() {
     loggedProfessor = JSON.parse(saved);
     showProfPanel();
   }
-  setInterval(checkAppVersion, 15000);
+  // Polling a cada 5 min — detecta deploy novo e avisa (sem recarregar sozinho)
+  setInterval(checkAppVersion, 5 * 60 * 1000);
   // Polling a cada 30s — puxa textos novos lançados em outros dispositivos
   setInterval(pollSyncStudents, 30000);
   window.addEventListener('focus', () => { checkAppVersion(); pollSyncStudents(); });

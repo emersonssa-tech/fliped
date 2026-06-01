@@ -636,40 +636,94 @@ async function syncStudentToServer(s) {
   } catch(e) {}
 }
 
-// ═══ AUTO-RELOAD em novo deploy (cache busting sem Ctrl+Shift+R) ═══
-// Pergunta ao servidor o build id atual. Se mudou desde a última vez que essa aba
-// carregou, recarrega a página automaticamente com bypass de cache. Roda no boot
-// e a cada 60 segundos enquanto o usuário estiver com a aba aberta.
-let _knownBuildId = null;
+// ═══ DETECÇÃO DE NOVA VERSÃO (sem reload automático) ═══
+// Pergunta ao servidor o build id atual a cada 5 min. Se mudou desde que esta aba
+// carregou, EXIBE UM BANNER no topo avisando que há atualização — NUNCA recarrega
+// sozinho, para o usuário não perder dados em edição. Ele decide quando atualizar.
+let _knownBuildId = null;       // build id carregado nesta sessão (não muda)
+let _knownVersion = null;       // versão legível carregada nesta sessão
+let _pendingBuildId = null;     // build id novo detectado no servidor
+let _pendingVersion = null;     // versão legível nova
+let _updateBannerShown = false; // banner está visível?
+let _updateSnoozeUntil = 0;     // timestamp até o qual o aviso fica adiado (Depois)
 let _reloadingForUpdate = false;
+
+const UPDATE_SNOOZE_MS = 30 * 60 * 1000; // re-exibir após 30 min ao clicar "Depois"
+
 async function checkAppVersion() {
   if (_reloadingForUpdate) return;
   try {
     const res = await fetch('/api/app-version', { cache: 'no-store' });
     if (!res.ok) return;
-    const { buildId } = await res.json();
+    const { buildId, version } = await res.json();
     if (!buildId) return;
+    // Primeira checagem: memoriza a versão atual desta aba.
     if (_knownBuildId === null) {
       _knownBuildId = buildId;
+      _knownVersion = version || null;
       return;
     }
+    // Servidor mudou → há nova versão disponível.
     if (buildId !== _knownBuildId) {
-      _reloadingForUpdate = true;
-      // Aviso curto e recarrega forçando cache bypass
-      try {
-        const banner = document.createElement('div');
-        banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#1e40af;color:#fff;padding:14px 20px;text-align:center;font:600 14px Inter,sans-serif;box-shadow:0 4px 12px rgba(0,0,0,.2)';
-        banner.textContent = 'Nova versão do FLIPED disponível — recarregando...';
-        document.body.appendChild(banner);
-      } catch(e) {}
-      setTimeout(() => {
-        // Adiciona timestamp na URL para garantir bypass de cache
-        const url = new URL(window.location.href);
-        url.searchParams.set('_v', buildId);
-        window.location.replace(url.toString());
-      }, 1200);
+      _pendingBuildId = buildId;
+      _pendingVersion = version || null;
+      // Só mostra se não estiver adiado (snooze) e ainda não estiver na tela.
+      if (!_updateBannerShown && Date.now() >= _updateSnoozeUntil) {
+        showUpdateBanner();
+      }
     }
   } catch(e) { /* offline ou servidor caiu — ignora */ }
+}
+
+function showUpdateBanner() {
+  if (_updateBannerShown) return;
+  _updateBannerShown = true;
+
+  const atual = _knownVersion ? ('v' + _knownVersion) : (_knownBuildId || '—').slice(0, 7);
+  const nova  = _pendingVersion ? ('v' + _pendingVersion) : (_pendingBuildId || '—').slice(0, 7);
+
+  const bar = document.createElement('div');
+  bar.id = 'fliped-update-banner';
+  bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#1e40af;color:#fff;'
+    + 'padding:12px 18px;font:14px Inter,system-ui,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.25);'
+    + 'display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap;text-align:center';
+  bar.innerHTML =
+      '<div style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;min-width:240px">'
+    +   '<strong style="font-size:15px">Nova versão do FLIPED disponível</strong>'
+    +   '<span style="opacity:.9;font-size:12.5px">Versão atual: ' + atual + ' &nbsp;→&nbsp; Nova versão: ' + nova + '</span>'
+    +   '<span style="opacity:.9;font-size:12.5px">⚠️ Salve o que estiver editando — atualizar recarrega a página.</span>'
+    + '</div>'
+    + '<div style="display:flex;gap:10px;flex-wrap:wrap">'
+    +   '<button id="fliped-update-now" style="cursor:pointer;border:0;border-radius:8px;padding:9px 16px;font:600 13px Inter,sans-serif;background:#fff;color:#1e40af">Atualizar Agora</button>'
+    +   '<button id="fliped-update-later" style="cursor:pointer;border:1px solid rgba(255,255,255,.6);border-radius:8px;padding:9px 16px;font:600 13px Inter,sans-serif;background:transparent;color:#fff">Depois</button>'
+    + '</div>';
+  document.body.appendChild(bar);
+
+  document.getElementById('fliped-update-now').addEventListener('click', applyUpdate);
+  document.getElementById('fliped-update-later').addEventListener('click', dismissUpdateBanner);
+}
+
+function dismissUpdateBanner() {
+  // "Depois": fecha o aviso e re-exibe somente após 30 min.
+  const bar = document.getElementById('fliped-update-banner');
+  if (bar) bar.remove();
+  _updateBannerShown = false;
+  _updateSnoozeUntil = Date.now() + UPDATE_SNOOZE_MS;
+}
+
+async function applyUpdate() {
+  // "Atualizar Agora": limpa caches e recarrega com bypass, carregando a nova versão.
+  _reloadingForUpdate = true;
+  const targetBuildId = _pendingBuildId || _knownBuildId || Date.now();
+  try {
+    if (window.caches && caches.keys) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+  } catch(e) { /* sem Cache API — segue */ }
+  const url = new URL(window.location.href);
+  url.searchParams.set('_v', String(targetBuildId)); // força bypass de cache HTTP
+  window.location.replace(url.toString());
 }
 
 // ═══ INIT ═══
@@ -679,8 +733,8 @@ async function init() {
   await checkSeedVersion();
   await syncStudentsFromServer();
   renderUnits(); renderAll(); populateSelects();
-  // Polling a cada 15s — detecta deploy novo enquanto o usuário usa o sistema
-  setInterval(checkAppVersion, 15000);
+  // Polling a cada 5 min — detecta deploy novo e avisa (sem recarregar sozinho)
+  setInterval(checkAppVersion, 5 * 60 * 1000);
   // Polling a cada 30s — puxa textos novos lançados por professoras
   setInterval(pollSyncStudents, 30000);
   // Ao focar a aba, checa ambos imediatamente (caso a aba ficou em segundo plano)
