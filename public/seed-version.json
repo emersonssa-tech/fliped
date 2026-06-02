@@ -1,5 +1,5 @@
 {
-  "version": "2026-06-01-coc-horto-sised",
-  "updatedAt": "2026-06-01",
-  "note": "COC Horto Florestal: lista substituida pelos alunos das listas de presenca do SISED (105 alunos - Infantil Grupo 2/3 e Fundamental 1o ao 5o Ano). Turmas no padrao SISED."
+  "version": "2026-06-02-ped-lauro-turmas",
+  "updatedAt": "2026-06-02",
+  "note": "PED Lauro (Educandario Pedacinho do Ceu): 329 alunos sem turma especifica substituidos por 341 alunos ativos com turma detalhada do SISED (21 turmas, padrao 'Grupo 4A - MAT - A', '1o Ano A - MAT - A' etc). Cancelados/transferidos excluidos."
 }
