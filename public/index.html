@@ -66,6 +66,13 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: v
 }
 .nav-btn:hover { background: rgba(255,255,255,.06); color: #fff; }
 .nav-btn.active { background: rgba(255,255,255,.1); color: #fff; }
+.logout-btn {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  margin-top: 8px; padding: 10px 12px; border: none; background: transparent;
+  color: rgba(255,120,90,.7); font-size: 13px; font-weight: 600;
+  border-radius: 6px; cursor: pointer; text-align: left; transition: all .15s;
+}
+.logout-btn:hover { background: rgba(233,85,31,.14); color: #ff6b3d; }
 .nav-icon { width: 18px; text-align: center; font-size: 15px; }
 
 .main { margin-left: var(--sidebar-w); min-height: 100vh; }
@@ -299,6 +306,9 @@ tbody tr:last-child td { border-bottom: none; }
     </button>
     <button class="nav-btn" onclick="showPage('professores')">
       <span class="nav-icon">🎓</span><span>Professores</span>
+    </button>
+    <button class="logout-btn" onclick="logout()">
+      <span class="nav-icon">🚪</span><span>Sair</span>
     </button>
   </nav>
 </aside>
@@ -1775,6 +1785,13 @@ async function resetSeed() {
   await seedStudents();
   renderUnits(); renderAll(); populateSelects();
   alert('Base recarregada com sucesso!');
+}
+
+// Encerra a sessão: limpa o cookie no servidor e volta pra tela de login.
+async function logout() {
+  if (!confirm('Deseja sair do painel?')) return;
+  try { await fetch('/api/logout', { method: 'POST' }); } catch (e) {}
+  window.location.reload();
 }
 
 // Só libera o painel após confirmar sessão de admin; senão mantém o gate.
