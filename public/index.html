@@ -3,7 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FLIPED — Grupo PED</title>
+<title>FLIPED</title>
+<link rel="icon" type="image/png" href="/fliped-logo.png">
+<link rel="apple-touch-icon" href="/fliped-logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
@@ -36,7 +40,8 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: v
 }
 .sidebar-brand { padding: 20px 20px 16px; border-bottom: 1px solid rgba(255,255,255,.08); }
 .sidebar-brand h1 { font-size: 16px; font-weight: 700; color: #fff; letter-spacing: -.3px; }
-.sidebar-brand span { font-size: 11px; color: var(--chalk-gray); display: block; margin-top: 2px; }
+.sidebar-brand .brand-logo { display: block; width: 100%; max-width: 160px; height: auto; background: #fff; padding: 9px 12px; border-radius: 10px; box-sizing: border-box; }
+.sidebar-brand span { font-size: 11px; color: var(--chalk-gray); display: block; margin-top: 8px; }
 .sidebar-section { padding: 16px 12px 8px; }
 .sidebar-section-title {
   font-size: 10px; font-weight: 600; color: var(--chalk-gray);
@@ -216,7 +221,7 @@ tbody tr:last-child td { border-bottom: none; }
 
 @media (max-width: 900px) {
   .sidebar { width: 60px; }
-  .sidebar-brand h1, .sidebar-brand span, .sidebar-section-title, .unit-btn span, .nav-btn span { display: none; }
+  .sidebar-brand h1, .sidebar-brand span, .sidebar-brand .brand-logo, .sidebar-section-title, .unit-btn span, .nav-btn span { display: none; }
   .main { margin-left: 60px; }
   .stats-row { grid-template-columns: repeat(2, 1fr); }
 }
@@ -224,13 +229,56 @@ tbody tr:last-child td { border-bottom: none; }
 </head>
 <body>
 
+<!-- ═══ GATE DE ACESSO (cobre o painel até autenticar) — design FLIPED ═══ -->
+<style>
+  #adminGate { font-family: 'Nunito', system-ui, -apple-system, sans-serif; padding: 24px;
+    background:
+      radial-gradient(1100px 560px at 10% -12%, rgba(233,85,31,.18), transparent 58%),
+      radial-gradient(1000px 680px at 112% 118%, rgba(53,185,233,.20), transparent 55%),
+      linear-gradient(165deg, #FFF7EE 0%, #FDEFF1 46%, #EAF6FC 100%); }
+  #adminGate .ag-card { position: relative; overflow: hidden; background: #fff; color: #1A1A2E;
+    border-radius: 28px; padding: 40px 34px 28px; max-width: 400px; width: 100%; text-align: center;
+    box-shadow: 0 30px 70px -22px rgba(28,54,84,.42), 0 4px 14px rgba(28,54,84,.10);
+    animation: agAppear .55s cubic-bezier(.2,.85,.25,1); }
+  #adminGate .ag-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 7px;
+    background: linear-gradient(90deg, #E9551F 0%, #F4C13E 34%, #35B9E9 67%, #1C86C9 100%); }
+  @keyframes agAppear { from { opacity: 0; transform: translateY(18px) scale(.97); } to { opacity: 1; transform: none; } }
+  #adminGate .ag-logo { display: block; width: 100%; max-width: 236px; height: auto; margin: 12px auto 14px; }
+  #adminGate .ag-sub { font-size: 13.5px; color: #64748b; font-weight: 700; line-height: 1.55; margin: 0 0 24px; }
+  #adminGate .ag-sub strong { color: #1C86C9; }
+  #adminGate input { width: 100%; box-sizing: border-box; padding: 15px 16px; border: 2px solid #ECE4D8;
+    border-radius: 14px; font-size: 15px; font-weight: 700; font-family: inherit; outline: none;
+    margin-bottom: 12px; background: #FBF8F3; color: #1A1A2E; transition: all .18s; }
+  #adminGate input::placeholder { color: #9AA7B4; font-weight: 600; }
+  #adminGate input:focus { border-color: #35B9E9; background: #fff; box-shadow: 0 0 0 4px rgba(53,185,233,.18); }
+  #adminGate .ag-btn { width: 100%; padding: 16px; border: 0; border-radius: 14px; cursor: pointer;
+    font-family: inherit; font-size: 16px; font-weight: 900; color: #fff; letter-spacing: .3px;
+    background: linear-gradient(135deg, #E9551F 0%, #FF7A3C 100%);
+    box-shadow: 0 12px 24px -10px rgba(233,85,31,.62); transition: all .18s; }
+  #adminGate .ag-btn:hover { transform: translateY(-2px); box-shadow: 0 18px 30px -12px rgba(233,85,31,.68); }
+  #adminGate .ag-btn:active { transform: translateY(0); }
+  #adminGate .ag-err { color: #dc2626; font-size: 13px; font-weight: 800; margin-top: 12px; min-height: 18px; }
+</style>
+<div id="adminGate" style="display:flex;position:fixed;inset:0;z-index:100000;align-items:center;justify-content:center">
+  <div class="ag-card">
+    <img src="/fliped-logo.png" alt="FLIPED — Feira Literária Pedagógica" class="ag-logo">
+    <p class="ag-sub">Professores e coordenadores usam este mesmo acesso.<br>Professor: <strong>nome + senha</strong>. Coordenador: deixe o nome em branco e use a <strong>senha de coordenador</strong>.</p>
+    <input type="text" id="loginName" placeholder="Seu nome (professor)" autocomplete="off"
+           onkeydown="if(event.key==='Enter')adminLogin()">
+    <input type="password" id="adminPw" placeholder="Senha" autocomplete="current-password"
+           onkeydown="if(event.key==='Enter')adminLogin()">
+    <button class="ag-btn" onclick="adminLogin()">Entrar</button>
+    <div class="ag-err" id="adminErr"></div>
+  </div>
+</div>
+
 <!-- Toast de status de salvamento (canto inferior direito) -->
 <div id="saveToast" style="display:none;position:fixed;bottom:20px;right:20px;z-index:99998;padding:12px 18px;border-radius:10px;font:600 13px Inter,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.25);max-width:320px"></div>
 
 <aside class="sidebar">
   <div class="sidebar-brand">
-    <h1>FLIPED</h1>
-    <span>Grupo PED — 2026</span>
+    <img src="/fliped-logo.png" alt="FLIPED — Feira Literária Pedagógica" class="brand-logo">
+    <span>2026</span>
   </div>
   <div class="sidebar-section">
     <div class="sidebar-section-title">Unidades</div>
@@ -450,6 +498,43 @@ tbody tr:last-child td { border-bottom: none; }
 <div id="qr-temp" style="position:absolute;left:-9999px;top:-9999px"></div>
 
 <script>
+// Se a sessão (cookie admin) expirar, qualquer /api responde 401 -> volta ao gate.
+(function () {
+  const _f = window.fetch;
+  window.fetch = async function (url, opts) {
+    const res = await _f(url, opts);
+    try {
+      const u = (typeof url === 'string' ? url : (url && url.url)) || '';
+      if (res.status === 401 && u.indexOf('/api/') === 0 &&
+          u.indexOf('/api/me') !== 0 && u.indexOf('/api/admin/login') !== 0 &&
+          u.indexOf('/api/professor/login') !== 0) {
+        const g = document.getElementById('adminGate'); if (g) g.style.display = 'flex';
+      }
+    } catch (e) {}
+    return res;
+  };
+})();
+async function adminLogin() {
+  const name = (document.getElementById('loginName')?.value || '').trim();
+  const pw = document.getElementById('adminPw').value;
+  const err = document.getElementById('adminErr'); err.textContent = '';
+  try {
+    // 1) Se informou nome, tenta entrar como PROFESSOR → portal do professor
+    if (name) {
+      const rp = await fetch('/api/professor/login', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name, password: pw }),
+      });
+      if (rp.ok) { window.location.href = '/professor.html'; return; }
+    }
+    // 2) Entra como COORDENADOR (senha única). O nome é ignorado.
+    const r = await fetch('/api/admin/login', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: pw }),
+    });
+    if (r.ok) { location.reload(); return; }
+    err.textContent = (r.status === 401) ? (name ? 'Nome ou senha incorretos' : 'Senha incorreta') : 'Falha no login';
+  } catch (e) { err.textContent = 'Erro de conexão'; }
+}
 const UNITS = [
   { id: 'coc-lauro', name: 'COC Lauro de Freitas', short: 'COC-LF', color: '#dc2626' },
   { id: 'coc-horto', name: 'COC Horto Florestal', short: 'COC-HF', color: '#ea580c' },
@@ -459,6 +544,20 @@ const UNITS = [
   { id: 'anglo-lauro', name: 'Anglo Lauro de Freitas', short: 'ANG-LF', color: '#15803d' },
   { id: 'ped-pituba', name: 'PED Pituba', short: 'PED-PIT', color: '#b45309' },
 ];
+
+// Logo carregado uma vez e reutilizado nos PDFs (proporção preservada).
+let _flipedLogoImg = null, _flipedLogoPromise = null;
+function loadFlipedLogo() {
+  if (_flipedLogoImg) return Promise.resolve(_flipedLogoImg);
+  if (_flipedLogoPromise) return _flipedLogoPromise;
+  _flipedLogoPromise = new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => { _flipedLogoImg = img; resolve(img); };
+    img.onerror = () => resolve(null);
+    img.src = '/fliped-logo.png';
+  });
+  return _flipedLogoPromise;
+}
 
 function genCode(s) {
   const u = UNITS.find(x => x.id === s.unit);
@@ -1027,9 +1126,17 @@ async function generatePDF(studentId) {
 
   // HEADER
   doc.setFillColor(30,64,175); doc.rect(0,0,W,20,'F');
-  doc.setTextColor(255); doc.setFontSize(10); doc.setFont('helvetica','bold');
-  doc.text('FLIPED — GRUPO PED',m,9);
-  doc.setFontSize(8); doc.setFont('helvetica','normal');
+  // Logo FLIPED num quadrinho branco (à esquerda). Fallback: texto branco.
+  const _logo = await loadFlipedLogo();
+  if (_logo) {
+    const lh = 11, lw = lh * (_logo.naturalWidth / _logo.naturalHeight);
+    doc.setFillColor(255,255,255); doc.roundedRect(m-2, 3, lw+4, lh+3, 2, 2, 'F');
+    doc.addImage(_logo, 'PNG', m, 4.5, lw, lh);
+  } else {
+    doc.setTextColor(255); doc.setFontSize(10); doc.setFont('helvetica','bold');
+    doc.text('FLIPED',m,9);
+  }
+  doc.setTextColor(255); doc.setFontSize(8); doc.setFont('helvetica','normal');
   doc.text(u?u.name.toUpperCase():'',W-m,9,{align:'right'});
   doc.text('Fotografe esta folha depois de pronta',W-m,15,{align:'right'});
 
@@ -1066,7 +1173,7 @@ async function generatePDF(studentId) {
   doc.text(code,m,footY+12);
   doc.setFontSize(8); doc.setFont('helvetica','normal');
   doc.text(s.name,m,footY+19);
-  doc.text(`${s.turma} | ${u?u.name:''} | Grupo PED 2026`,m,footY+25);
+  doc.text(`${s.turma} | ${u?u.name:''} | FLIPED 2026`,m,footY+25);
 
   doc.setDrawColor(100,116,139); doc.setLineWidth(.3);
   doc.line(W-45,footY+3,W-45,footY+27);
@@ -1670,7 +1777,26 @@ async function resetSeed() {
   alert('Base recarregada com sucesso!');
 }
 
-init();
+// Só libera o painel após confirmar sessão de admin; senão mantém o gate.
+async function bootstrap() {
+  try {
+    const me = await fetch('/api/me');
+    if (me.ok) {
+      const u = await me.json();
+      if (u.role === 'admin') {
+        document.getElementById('adminGate').style.display = 'none';
+        init();
+        return;
+      }
+      if (u.role === 'professor') {
+        window.location.replace('/professor.html'); // professor logado → portal dele
+        return;
+      }
+    }
+  } catch (e) {}
+  document.getElementById('adminGate').style.display = 'flex';
+}
+bootstrap();
 </script>
 </body>
 </html>

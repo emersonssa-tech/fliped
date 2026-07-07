@@ -1,9 +1,8 @@
 const express = require('express');
 const multer = require('multer');
-const { google } = require('googleapis');
 const path = require('path');
 const fs = require('fs');
-const stream = require('stream');
+const fsp = fs.promises;
 const archiver = require('archiver');
 
 const app = express();
@@ -23,88 +22,7 @@ const upload = multer({
   }
 });
 
-// ═══ GOOGLE DRIVE AUTH ═══
-let drive = null;
-let DRIVE_ROOT_FOLDER = process.env.DRIVE_FOLDER_ID || null;
-
-function initDrive() {
-  try {
-    const credsEnv = process.env.GOOGLE_CREDENTIALS;
-    if (!credsEnv) {
-      console.warn('⚠ GOOGLE_CREDENTIALS não configurado — uploads desabilitados');
-      return;
-    }
-    const creds = JSON.parse(credsEnv);
-    const auth = new google.auth.GoogleAuth({
-      credentials: creds,
-      scopes: ['https://www.googleapis.com/auth/drive.file']
-    });
-    drive = google.drive({ version: 'v3', auth });
-    console.log('✓ Google Drive API conectada');
-  } catch (e) {
-    console.error('✗ Erro ao inicializar Google Drive:', e.message);
-  }
-}
-
-// ═══ HELPERS DRIVE ═══
-
-// Busca ou cria subpasta dentro de um parent
-async function findOrCreateFolder(name, parentId) {
-  // Buscar existente
-  const res = await drive.files.list({
-    q: `name='${name}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-    fields: 'files(id, name)',
-    spaces: 'drive'
-  });
-  if (res.data.files.length > 0) return res.data.files[0].id;
-
-  // Criar nova
-  const folder = await drive.files.create({
-    requestBody: {
-      name,
-      mimeType: 'application/vnd.google-apps.folder',
-      parents: [parentId]
-    },
-    fields: 'id'
-  });
-  return folder.data.id;
-}
-
-// Estrutura: FLIPED > Unidade > Turma
-async function getStudentFolder(unitName, turma) {
-  const unitFolderId = await findOrCreateFolder(unitName, DRIVE_ROOT_FOLDER);
-  const turmaFolderId = await findOrCreateFolder(turma, unitFolderId);
-  return turmaFolderId;
-}
-
-// Upload de arquivo para o Drive
-async function uploadToDrive(fileBuffer, fileName, mimeType, folderId) {
-  const bufferStream = new stream.PassThrough();
-  bufferStream.end(fileBuffer);
-
-  const res = await drive.files.create({
-    requestBody: {
-      name: fileName,
-      parents: [folderId]
-    },
-    media: {
-      mimeType,
-      body: bufferStream
-    },
-    fields: 'id, name, webViewLink, webContentLink, size'
-  });
-
-  // Tornar acessível via link (anyone with link can view)
-  await drive.permissions.create({
-    fileId: res.data.id,
-    requestBody: {
-      role: 'reader',
-      type: 'anyone'
-    }
-  });
-
-  return res.data;
-}
+// (Integração Google Drive removida — os uploads vão direto ao volume local.)
 
 // ═══ PROFESSORES (persistência em JSON) ═══
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
@@ -121,11 +39,14 @@ function slug(str) {
   return String(str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'sem_nome';
 }
-// Salva um buffer no Volume e retorna o link publico
-function saveToVolume(fileBuffer, fileName, unitName, turma) {
+// Salva um buffer no Volume de forma ATÔMICA (.tmp + rename) e retorna o link público
+async function saveToVolume(fileBuffer, fileName, unitName, turma) {
   const dir = path.join(UPLOADS_DIR, slug(unitName), slug(turma));
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, fileName), fileBuffer);
+  await fsp.mkdir(dir, { recursive: true });
+  const dest = path.join(dir, fileName);
+  const tmp = `${dest}.tmp.${process.pid}.${Date.now()}`;
+  await fsp.writeFile(tmp, fileBuffer);
+  await fsp.rename(tmp, dest);
   return {
     name: fileName,
     link: `/uploads/${slug(unitName)}/${slug(turma)}/${encodeURIComponent(fileName)}`,
@@ -133,21 +54,71 @@ function saveToVolume(fileBuffer, fileName, unitName, turma) {
   };
 }
 
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+// ═══ PERSISTÊNCIA — cache em memória + escrita atômica serializada ═══
+// Os dados ficam em memória (carregados 1x no boot) e são servidos de lá: zero
+// I/O de disco por request (antes lia 1,3MB a cada chamada). Cada escrita
+// atualiza a memória e persiste de forma ATÔMICA (.tmp + rename) e SERIALIZADA
+// (fila por arquivo) — evita corrupção em queda/reinício e perda de updates
+// concorrentes.
+let professorsData = [];   // array
+let studentsData = {};     // dicionário por studentKey
+
+async function ensureDataDir() {
+  await fsp.mkdir(DATA_DIR, { recursive: true });
 }
 
-function loadProfessors() {
-  ensureDataDir();
-  if (fs.existsSync(PROFESSORS_FILE)) {
-    return JSON.parse(fs.readFileSync(PROFESSORS_FILE, 'utf8'));
+// Fila de escrita por arquivo (mutex via Promise-chain) com escrita atômica.
+const _writeQueues = new Map();
+function atomicWriteJson(file, value) {
+  const content = JSON.stringify(value, null, 2);
+  const prev = _writeQueues.get(file) || Promise.resolve();
+  const next = prev.catch(() => {}).then(async () => {
+    await fsp.mkdir(path.dirname(file), { recursive: true });
+    const tmp = `${file}.tmp.${process.pid}`;
+    const fh = await fsp.open(tmp, 'w');
+    try {
+      await fh.writeFile(content);
+      await fh.sync();              // flush no disco antes do rename
+    } finally {
+      await fh.close();
+    }
+    await fsp.rename(tmp, file);    // rename é atômico no mesmo filesystem
+  });
+  _writeQueues.set(file, next);
+  return next;
+}
+
+// Lê um JSON no boot. Se o arquivo EXISTE mas está corrompido, ABORTA o boot em
+// vez de assumir vazio (evita a "cascata de corrupção" que apagaria os textos).
+async function readJsonOrAbort(file, fallback, label) {
+  let raw;
+  try {
+    raw = await fsp.readFile(file, 'utf8');
+  } catch (e) {
+    if (e.code === 'ENOENT') return fallback;   // primeira execução
+    console.error(`✗ FATAL: não consegui LER ${label} (${file}): ${e.message}`);
+    process.exit(1);
   }
-  return [];
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    console.error(`✗ FATAL: ${label} (${file}) está CORROMPIDO: ${e.message}`);
+    console.error('  Abortei o boot para NÃO sobrescrever dados. Restaure de um backup.');
+    process.exit(1);
+  }
 }
 
-function saveProfessors(profs) {
-  ensureDataDir();
-  fs.writeFileSync(PROFESSORS_FILE, JSON.stringify(profs, null, 2), 'utf8');
+async function initData() {
+  await ensureDataDir();
+  professorsData = await readJsonOrAbort(PROFESSORS_FILE, [], 'professors.json');
+  studentsData = await readJsonOrAbort(STUDENTS_FILE, {}, 'students.json');
+  console.log(`Dados carregados: ${professorsData.length} professores, ${Object.keys(studentsData).length} alunos`);
+}
+
+function loadProfessors() { return professorsData; }
+async function saveProfessors(profs) {
+  professorsData = profs;
+  await atomicWriteJson(PROFESSORS_FILE, professorsData);
 }
 
 // ── Alunos: dados compartilhados de texto/status, indexados por chave estável ──
@@ -163,18 +134,10 @@ function studentKey(unit, turma, name) {
   ).join('|');
 }
 
-function loadStudentData() {
-  ensureDataDir();
-  if (fs.existsSync(STUDENTS_FILE)) {
-    try { return JSON.parse(fs.readFileSync(STUDENTS_FILE, 'utf8')); }
-    catch (e) { console.error('students.json corrompido:', e.message); return {}; }
-  }
-  return {};
-}
-
-function saveStudentData(data) {
-  ensureDataDir();
-  fs.writeFileSync(STUDENTS_FILE, JSON.stringify(data, null, 2), 'utf8');
+function loadStudentData() { return studentsData; }
+async function saveStudentData(data) {
+  studentsData = data;
+  await atomicWriteJson(STUDENTS_FILE, studentsData);
 }
 
 // Gerar ID curto único
@@ -277,21 +240,114 @@ app.use(express.static(__dirname, {
   setHeaders: setCacheHeaders
 }));
 ensureUploadsDir();
-app.use('/uploads', express.static(UPLOADS_DIR));
+
+// ═══ AUTENTICAÇÃO — sessão por cookie assinado (HMAC) + senhas com scrypt ═══
+// Sem dependências externas. O cookie 'em_session' viaja automaticamente em
+// fetch E em <img src="/uploads/...">, protegendo a API e os desenhos.
+const SESSION_SECRET = process.env.SESSION_SECRET || process.env.ADMIN_TOKEN || 'dev-inseguro-trocar';
+const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12h
+
+function signToken(data) {
+  const body = Buffer.from(JSON.stringify({ ...data, exp: Date.now() + SESSION_TTL_MS })).toString('base64url');
+  const sig = crypto.createHmac('sha256', SESSION_SECRET).update(body).digest('base64url');
+  return `${body}.${sig}`;
+}
+function verifyToken(token) {
+  if (!token || typeof token !== 'string' || token.indexOf('.') < 0) return null;
+  const [body, sig] = token.split('.');
+  if (!body || !sig) return null;
+  const expected = crypto.createHmac('sha256', SESSION_SECRET).update(body).digest('base64url');
+  const a = Buffer.from(sig), b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  let payload;
+  try { payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')); } catch { return null; }
+  if (!payload.exp || Date.now() > payload.exp) return null;
+  return payload;
+}
+function parseCookies(req) {
+  const out = {}; const h = req.headers.cookie;
+  if (h) for (const part of h.split(';')) {
+    const i = part.indexOf('='); if (i < 0) continue;
+    out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+  }
+  return out;
+}
+function isSecureReq(req) {
+  return !!(req.secure || (req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https');
+}
+function setSessionCookie(req, res, token) {
+  const sec = isSecureReq(req) ? ' Secure;' : '';
+  res.setHeader('Set-Cookie', `em_session=${token}; Path=/; HttpOnly;${sec} SameSite=Lax; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`);
+}
+function clearSessionCookie(req, res) {
+  const sec = isSecureReq(req) ? ' Secure;' : '';
+  res.setHeader('Set-Cookie', `em_session=; Path=/; HttpOnly;${sec} SameSite=Lax; Max-Age=0`);
+}
+function getUser(req) { return verifyToken(parseCookies(req)['em_session']); }
+function requireAuth(role) {
+  return (req, res, next) => {
+    const u = getUser(req);
+    if (!u) return res.status(401).json({ error: 'Não autenticado' });
+    if (role === 'admin' && u.role !== 'admin') return res.status(403).json({ error: 'Requer administrador' });
+    req.user = u;
+    next();
+  };
+}
+// Senhas com scrypt (nativo). Formato: scrypt$<saltHex>$<hashHex>.
+// Aceita legado em texto puro e sinaliza upgrade no login.
+function hashPassword(pw) {
+  const salt = crypto.randomBytes(16);
+  return `scrypt$${salt.toString('hex')}$${crypto.scryptSync(String(pw), salt, 32).toString('hex')}`;
+}
+function verifyPassword(pw, stored) {
+  if (typeof stored !== 'string' || !stored) return { ok: false, legacy: false };
+  if (stored.startsWith('scrypt$')) {
+    const [, saltHex, hashHex] = stored.split('$');
+    try {
+      const h = crypto.scryptSync(String(pw), Buffer.from(saltHex, 'hex'), 32);
+      const exp = Buffer.from(hashHex, 'hex');
+      return { ok: h.length === exp.length && crypto.timingSafeEqual(h, exp), legacy: false };
+    } catch { return { ok: false, legacy: false }; }
+  }
+  return { ok: stored === String(pw), legacy: true };
+}
+
 app.use(express.json());
+
+// Desenhos protegidos: exigem sessão (cookie). Antes eram públicos (risco LGPD).
+app.use('/uploads', requireAuth(), express.static(UPLOADS_DIR));
 
 // ═══ HEALTH CHECK ═══
 app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    drive: !!drive,
-    driveFolder: !!DRIVE_ROOT_FOLDER,
-    timestamp: new Date().toISOString()
-  });
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// ═══ SESSÃO (admin / me / logout) ═══
+// Login do admin = senha igual ao ADMIN_TOKEN. Emite cookie de sessão 'admin'.
+app.post('/api/admin/login', (req, res) => {
+  const { password } = req.body || {};
+  // Senha do painel = ADMIN_PASSWORD (amigável). O ADMIN_TOKEN continua sendo o
+  // segredo FORTE que assina os cookies (SESSION_SECRET) — não deve ser a senha.
+  const admin = process.env.ADMIN_PASSWORD || process.env.ADMIN_TOKEN;
+  if (!admin) return res.status(500).json({ error: 'Senha de admin não configurada no servidor' });
+  const ok = typeof password === 'string'
+    && Buffer.byteLength(password) === Buffer.byteLength(admin)
+    && crypto.timingSafeEqual(Buffer.from(password), Buffer.from(admin));
+  if (!ok) return res.status(401).json({ error: 'Senha de administrador incorreta' });
+  setSessionCookie(req, res, signToken({ role: 'admin', name: 'admin' }));
+  res.json({ success: true, role: 'admin' });
+});
+
+app.post('/api/logout', (req, res) => { clearSessionCookie(req, res); res.json({ success: true }); });
+
+app.get('/api/me', (req, res) => {
+  const u = getUser(req);
+  if (!u) return res.status(401).json({ error: 'Não autenticado' });
+  res.json({ role: u.role, name: u.name, unit: u.unit, turmas: u.turmas });
 });
 
 // ═══ UPLOAD INDIVIDUAL (salva no Volume persistente) ═══
-app.post('/api/upload', upload.single('file'), async (req, res) => {
+app.post('/api/upload', requireAuth(), upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado' });
 
@@ -304,7 +360,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     const ext = path.extname(req.file.originalname) || '.pdf';
     const fileName = `${safeName}_${studentId || genId()}${ext}`;
 
-    const saved = saveToVolume(req.file.buffer, fileName, unitName, turma);
+    const saved = await saveToVolume(req.file.buffer, fileName, unitName, turma);
 
     res.json({
       success: true,
@@ -325,7 +381,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 });
 
 // ═══ UPLOAD EM LOTE (salva no Volume persistente) ═══
-app.post('/api/upload-batch', upload.array('files', 50), async (req, res) => {
+app.post('/api/upload-batch', requireAuth(), upload.array('files', 50), async (req, res) => {
   try {
     if (!req.files || !req.files.length) return res.status(400).json({ error: 'Nenhum arquivo enviado' });
 
@@ -335,18 +391,33 @@ app.post('/api/upload-batch', upload.array('files', 50), async (req, res) => {
     }
 
     const ids = JSON.parse(studentIds || '[]');
+    // Cada arquivo PRECISA estar pareado a um aluno (mesma ordem). Se as
+    // contagens divergem, recusa: melhor falhar do que associar ao aluno errado.
+    if (ids.length !== req.files.length) {
+      return res.status(400).json({
+        error: `Nº de arquivos (${req.files.length}) difere do nº de alunos selecionados (${ids.length}). Reenvie pareando 1 arquivo por aluno.`
+      });
+    }
 
     const results = [];
+    const usados = new Set();
     for (let i = 0; i < req.files.length; i++) {
       const file = req.files[i];
-      const studentId = ids[i] || `batch_${i}`;
+      const studentId = ids[i] || `batch_${genId()}`;
+      if (usados.has(studentId)) {
+        return res.status(400).json({ error: `studentId repetido no lote: ${studentId}` });
+      }
+      usados.add(studentId);
       const ext = path.extname(file.originalname) || '.pdf';
-      const fileName = `${slug(turma)}_${String(i + 1).padStart(3, '0')}_${studentId}${ext}`;
+      // Nome derivado do studentId (único) — evita colisão/sobrescrita por
+      // posição. Cada aluno tem seu próprio arquivo, identificável pelo id.
+      const fileName = `${slug(turma)}_${slug(String(studentId))}${ext}`;
 
-      const saved = saveToVolume(file.buffer, fileName, unitName, turma);
+      const saved = await saveToVolume(file.buffer, fileName, unitName, turma);
       results.push({
         index: i,
         studentId,
+        originalName: file.originalname,
         fileId: saved.name,
         link: saved.link,
         name: saved.name
@@ -361,23 +432,26 @@ app.post('/api/upload-batch', upload.array('files', 50), async (req, res) => {
 });
 
 // ═══ LISTAR ARQUIVOS DE UMA TURMA (do Volume) ═══
-app.get('/api/files/:unitName/:turma', async (req, res) => {
+app.get('/api/files/:unitName/:turma', requireAuth(), async (req, res) => {
   try {
     const { unitName, turma } = req.params;
     const dir = path.join(UPLOADS_DIR, slug(unitName), slug(turma));
-    if (!fs.existsSync(dir)) return res.json({ success: true, files: [] });
+    let names;
+    try { names = await fsp.readdir(dir); }
+    catch (e) { if (e.code === 'ENOENT') return res.json({ success: true, files: [] }); throw e; }
 
-    const files = fs.readdirSync(dir).filter(n => !n.startsWith('.')).sort().map(name => {
-      const st = fs.statSync(path.join(dir, name));
-      return {
+    const files = [];
+    for (const name of names.filter(n => !n.startsWith('.')).sort()) {
+      const st = await fsp.stat(path.join(dir, name));
+      files.push({
         id: name,
         name,
         webViewLink: `/uploads/${slug(unitName)}/${slug(turma)}/${encodeURIComponent(name)}`,
         link: `/uploads/${slug(unitName)}/${slug(turma)}/${encodeURIComponent(name)}`,
         size: st.size,
         createdTime: st.mtime.toISOString()
-      };
-    });
+      });
+    }
 
     res.json({ success: true, files });
   } catch (e) {
@@ -387,30 +461,30 @@ app.get('/api/files/:unitName/:turma', async (req, res) => {
 });
 
 // ═══ LISTAR TODOS OS ARQUIVOS (varre todo o Volume — usado pelo Painel Marketing) ═══
-app.get('/api/files-all', (req, res) => {
+app.get('/api/files-all', requireAuth('admin'), async (req, res) => {
   try {
-    if (!fs.existsSync(UPLOADS_DIR)) return res.json({ success: true, files: [] });
+    let unitDirs;
+    try { unitDirs = await fsp.readdir(UPLOADS_DIR, { withFileTypes: true }); }
+    catch (e) { if (e.code === 'ENOENT') return res.json({ success: true, files: [] }); throw e; }
 
     const out = [];
-    const unitDirs = fs.readdirSync(UPLOADS_DIR).filter(n => !n.startsWith('.'));
-    for (const uDir of unitDirs) {
-      const unitPath = path.join(UPLOADS_DIR, uDir);
-      if (!fs.statSync(unitPath).isDirectory()) continue;
-      const turmaDirs = fs.readdirSync(unitPath).filter(n => !n.startsWith('.'));
-      for (const tDir of turmaDirs) {
-        const turmaPath = path.join(unitPath, tDir);
-        if (!fs.statSync(turmaPath).isDirectory()) continue;
-        const files = fs.readdirSync(turmaPath).filter(n => !n.startsWith('.'));
-        for (const name of files) {
-          const full = path.join(turmaPath, name);
-          const st = fs.statSync(full);
-          if (!st.isFile()) continue;
+    for (const u of unitDirs) {
+      if (!u.isDirectory() || u.name.startsWith('.')) continue;
+      const unitPath = path.join(UPLOADS_DIR, u.name);
+      const turmaDirs = await fsp.readdir(unitPath, { withFileTypes: true });
+      for (const t of turmaDirs) {
+        if (!t.isDirectory() || t.name.startsWith('.')) continue;
+        const turmaPath = path.join(unitPath, t.name);
+        const files = await fsp.readdir(turmaPath, { withFileTypes: true });
+        for (const f of files) {
+          if (!f.isFile() || f.name.startsWith('.')) continue;
+          const st = await fsp.stat(path.join(turmaPath, f.name));
           out.push({
-            unitSlug: uDir,
-            turmaSlug: tDir,
-            id: name,
-            name,
-            link: `/uploads/${uDir}/${tDir}/${encodeURIComponent(name)}`,
+            unitSlug: u.name,
+            turmaSlug: t.name,
+            id: f.name,
+            name: f.name,
+            link: `/uploads/${u.name}/${t.name}/${encodeURIComponent(f.name)}`,
             size: st.size,
             mtime: st.mtime.toISOString()
           });
@@ -429,35 +503,39 @@ app.get('/api/files-all', (req, res) => {
 //   POST /api/zip  body: { mode: 'unit', unitName }
 //   POST /api/zip  body: { mode: 'turma', unitName, turma }
 //   POST /api/zip  body: { mode: 'selection', files: [{ unitSlug, turmaSlug, name }] }
-app.post('/api/zip', (req, res) => {
+app.post('/api/zip', requireAuth(), async (req, res) => {
   try {
     const { mode } = req.body || {};
     if (!mode) return res.status(400).json({ error: 'mode é obrigatório (unit, turma ou selection)' });
 
     // Resolve lista de arquivos absolutos
     const collected = []; // { abs, rel } — rel é o caminho dentro do ZIP
+    const statOrNull = async (p) => { try { return await fsp.stat(p); } catch { return null; } };
     if (mode === 'unit') {
       const { unitName } = req.body;
       if (!unitName) return res.status(400).json({ error: 'unitName é obrigatório' });
       const unitDir = path.join(UPLOADS_DIR, slug(unitName));
-      if (!fs.existsSync(unitDir)) return res.status(404).json({ error: 'Unidade sem desenhos enviados' });
-      const turmas = fs.readdirSync(unitDir).filter(n => !n.startsWith('.'));
+      let turmas;
+      try { turmas = await fsp.readdir(unitDir, { withFileTypes: true }); }
+      catch (e) { if (e.code === 'ENOENT') return res.status(404).json({ error: 'Unidade sem desenhos enviados' }); throw e; }
       for (const t of turmas) {
-        const tDir = path.join(unitDir, t);
-        if (!fs.statSync(tDir).isDirectory()) continue;
-        for (const f of fs.readdirSync(tDir).filter(n => !n.startsWith('.'))) {
-          const abs = path.join(tDir, f);
-          if (fs.statSync(abs).isFile()) collected.push({ abs, rel: path.join(t, f) });
+        if (!t.isDirectory() || t.name.startsWith('.')) continue;
+        const tDir = path.join(unitDir, t.name);
+        for (const f of await fsp.readdir(tDir, { withFileTypes: true })) {
+          if (!f.isFile() || f.name.startsWith('.')) continue;
+          collected.push({ abs: path.join(tDir, f.name), rel: path.join(t.name, f.name) });
         }
       }
     } else if (mode === 'turma') {
       const { unitName, turma } = req.body;
       if (!unitName || !turma) return res.status(400).json({ error: 'unitName e turma são obrigatórios' });
       const tDir = path.join(UPLOADS_DIR, slug(unitName), slug(turma));
-      if (!fs.existsSync(tDir)) return res.status(404).json({ error: 'Turma sem desenhos enviados' });
-      for (const f of fs.readdirSync(tDir).filter(n => !n.startsWith('.'))) {
-        const abs = path.join(tDir, f);
-        if (fs.statSync(abs).isFile()) collected.push({ abs, rel: f });
+      let entries;
+      try { entries = await fsp.readdir(tDir, { withFileTypes: true }); }
+      catch (e) { if (e.code === 'ENOENT') return res.status(404).json({ error: 'Turma sem desenhos enviados' }); throw e; }
+      for (const f of entries) {
+        if (!f.isFile() || f.name.startsWith('.')) continue;
+        collected.push({ abs: path.join(tDir, f.name), rel: f.name });
       }
     } else if (mode === 'selection') {
       const { files } = req.body;
@@ -468,7 +546,8 @@ app.post('/api/zip', (req, res) => {
         if (!item || !item.unitSlug || !item.turmaSlug || !item.name) continue;
         const abs = path.join(UPLOADS_DIR, item.unitSlug, item.turmaSlug, path.basename(item.name));
         if (!abs.startsWith(UPLOADS_DIR)) continue; // segurança
-        if (fs.existsSync(abs) && fs.statSync(abs).isFile()) {
+        const st = await statOrNull(abs);
+        if (st && st.isFile()) {
           collected.push({ abs, rel: path.join(item.unitSlug, item.turmaSlug, item.name) });
         }
       }
@@ -504,13 +583,13 @@ app.post('/api/zip', (req, res) => {
 });
 
 // ═══ DELETAR ARQUIVO (do Volume) ═══
-app.delete('/api/files/:unitName/:turma/:fileName', (req, res) => {
+app.delete('/api/files/:unitName/:turma/:fileName', requireAuth('admin'), async (req, res) => {
   try {
     const { unitName, turma, fileName } = req.params;
     const target = path.join(UPLOADS_DIR, slug(unitName), slug(turma), path.basename(fileName));
     if (!target.startsWith(UPLOADS_DIR)) return res.status(400).json({ error: 'Caminho inválido' });
-    if (!fs.existsSync(target)) return res.status(404).json({ error: 'Arquivo não encontrado' });
-    fs.unlinkSync(target);
+    try { await fsp.unlink(target); }
+    catch (e) { if (e.code === 'ENOENT') return res.status(404).json({ error: 'Arquivo não encontrado' }); throw e; }
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -520,14 +599,14 @@ app.delete('/api/files/:unitName/:turma/:fileName', (req, res) => {
 // ═══ PROFESSORES — CRUD ═══
 
 // Listar todos (para o painel admin)
-app.get('/api/professors', (req, res) => {
+app.get('/api/professors', requireAuth('admin'), (req, res) => {
   const profs = loadProfessors();
   // Não expor senha no listing
   res.json(profs.map(p => ({ ...p, password: '***' })));
 });
 
 // Criar professor
-app.post('/api/professors', (req, res) => {
+app.post('/api/professors', requireAuth('admin'), async (req, res) => {
   const { name, password, unit, turmas } = req.body;
   if (!name || !password || !unit || !turmas || !turmas.length) {
     return res.status(400).json({ error: 'Campos obrigatórios: name, password, unit, turmas[]' });
@@ -536,54 +615,64 @@ app.post('/api/professors', (req, res) => {
   const prof = {
     id: genId(),
     name,
-    password,
+    password: hashPassword(password),
     unit,
     turmas, // array de turmas: ["Grupo 2", "Grupo 3"]
     createdAt: new Date().toISOString()
   };
   profs.push(prof);
-  saveProfessors(profs);
+  await saveProfessors(profs);
   res.json({ success: true, professor: { ...prof, password: '***' } });
 });
 
 // Atualizar professor
-app.put('/api/professors/:id', (req, res) => {
+app.put('/api/professors/:id', requireAuth('admin'), async (req, res) => {
   const profs = loadProfessors();
   const idx = profs.findIndex(p => p.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Professor não encontrado' });
 
   const { name, password, unit, turmas } = req.body;
   if (name) profs[idx].name = name;
-  if (password) profs[idx].password = password;
+  if (password) profs[idx].password = hashPassword(password);
   if (unit) profs[idx].unit = unit;
   if (turmas) profs[idx].turmas = turmas;
 
-  saveProfessors(profs);
+  await saveProfessors(profs);
   res.json({ success: true, professor: { ...profs[idx], password: '***' } });
 });
 
 // Deletar professor
-app.delete('/api/professors/:id', (req, res) => {
+app.delete('/api/professors/:id', requireAuth('admin'), async (req, res) => {
   let profs = loadProfessors();
   profs = profs.filter(p => p.id !== req.params.id);
-  saveProfessors(profs);
+  await saveProfessors(profs);
   res.json({ success: true });
 });
 
 // ═══ ALUNOS — TEXTOS E STATUS (compartilhado entre todos os usuários) ═══
 
 // Retorna todos os dados de alunos salvos no servidor
-app.get('/api/students', (req, res) => {
-  res.json({ success: true, students: loadStudentData() });
+app.get('/api/students', requireAuth(), (req, res) => {
+  const all = loadStudentData();
+  if (req.user.role === 'professor') {
+    // Professor só enxerga os alunos da própria unidade.
+    const out = {};
+    for (const k of Object.keys(all)) if (all[k] && all[k].unit === req.user.unit) out[k] = all[k];
+    return res.json({ success: true, students: out });
+  }
+  res.json({ success: true, students: all });
 });
 
 // Salva/atualiza o texto e status de um aluno.
 // Body: { unit, turma, name, storyText?, status?, hasDrawing?, textReviewed?, pdfGenerated? }
-app.post('/api/students/save', (req, res) => {
+app.post('/api/students/save', requireAuth(), async (req, res) => {
   try {
     const { unit, turma, name } = req.body;
     if (!unit || !turma || !name) {
       return res.status(400).json({ error: 'unit, turma e name são obrigatórios' });
+    }
+    if (req.user.role === 'professor' && unit !== req.user.unit) {
+      return res.status(403).json({ error: 'Você só pode editar alunos da sua unidade' });
     }
     const data = loadStudentData();
     const key = studentKey(unit, turma, name);
@@ -595,7 +684,7 @@ app.post('/api/students/save', (req, res) => {
     });
     next.updatedAt = new Date().toISOString();
     data[key] = next;
-    saveStudentData(data);
+    await saveStudentData(data);
     res.json({ success: true, student: next });
   } catch (e) {
     console.error('Erro ao salvar aluno:', e.message);
@@ -627,7 +716,7 @@ function normName(s) {
     .trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-app.post('/api/admin/migrate-student-keys', (req, res) => {
+app.post('/api/admin/migrate-student-keys', async (req, res) => {
   const token = req.headers['x-admin-token'] || req.query.token;
   if (!process.env.ADMIN_TOKEN || token !== process.env.ADMIN_TOKEN) {
     return res.status(401).json({ error: 'token inválido' });
@@ -705,10 +794,10 @@ app.post('/api/admin/migrate-student-keys', (req, res) => {
     // Backup antes de gravar
     try {
       const bak = STUDENTS_FILE + '.bak-' + Date.now();
-      if (fs.existsSync(STUDENTS_FILE)) fs.copyFileSync(STUDENTS_FILE, bak);
+      await fsp.copyFile(STUDENTS_FILE, bak);
       result.backup = path.basename(bak);
     } catch(e) { result.backupError = e.message; }
-    saveStudentData(next);
+    await saveStudentData(next);
     result.applied = true;
   } else {
     result.applied = false;
@@ -717,18 +806,20 @@ app.post('/api/admin/migrate-student-keys', (req, res) => {
 });
 
 // ═══ LOGIN DO PROFESSOR ═══
-app.post('/api/professor/login', (req, res) => {
+app.post('/api/professor/login', async (req, res) => {
   const { name, password } = req.body;
   if (!name || !password) {
     return res.status(400).json({ error: 'Informe nome e senha' });
   }
   const profs = loadProfessors();
-  const prof = profs.find(p =>
-    p.name.toLowerCase() === name.toLowerCase() && p.password === password
-  );
-  if (!prof) {
+  const prof = profs.find(p => p.name.toLowerCase() === String(name).toLowerCase());
+  const v = prof ? verifyPassword(password, prof.password) : { ok: false };
+  if (!prof || !v.ok) {
     return res.status(401).json({ error: 'Nome ou senha incorretos' });
   }
+  // Upgrade transparente: senha legada em texto puro -> hash scrypt
+  if (v.legacy) { prof.password = hashPassword(password); await saveProfessors(profs); }
+  setSessionCookie(req, res, signToken({ role: 'professor', id: prof.id, name: prof.name, unit: prof.unit, turmas: prof.turmas }));
   // Retorna dados do professor (sem senha)
   res.json({
     success: true,
@@ -742,9 +833,27 @@ app.post('/api/professor/login', (req, res) => {
 });
 
 // ═══ START ═══
-initDrive();
-app.listen(PORT, () => {
-  console.log(`FLIPED server rodando na porta ${PORT}`);
-  console.log(`Google Drive: ${drive ? '✓ Conectado' : '✗ Não configurado'}`);
-  if (DRIVE_ROOT_FOLDER) console.log(`Pasta raiz: ${DRIVE_ROOT_FOLDER}`);
+let server;
+initData().then(() => {
+  server = app.listen(PORT, () => {
+    console.log(`FLIPED server rodando na porta ${PORT}`);
+  });
+}).catch((e) => {
+  console.error('Falha ao iniciar:', e);
+  process.exit(1);
 });
+
+// Graceful shutdown: ao receber SIGTERM/SIGINT (deploy, docker stop), para de
+// aceitar conexões e ESPERA as escritas pendentes terminarem antes de sair —
+// evita interromper uma gravação no meio e corromper os dados.
+let _encerrando = false;
+async function shutdown(sig) {
+  if (_encerrando) return;
+  _encerrando = true;
+  console.log(`Recebido ${sig}, encerrando com segurança...`);
+  try { if (server) await new Promise((resolve) => server.close(resolve)); } catch {}
+  try { await Promise.allSettled(Array.from(_writeQueues.values())); } catch {}
+  process.exit(0);
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

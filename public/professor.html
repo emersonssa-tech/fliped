@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FLIPED — Portal do Professor</title>
+<link rel="icon" type="image/png" href="/fliped-logo.png">
+<link rel="apple-touch-icon" href="/fliped-logo.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -28,6 +30,12 @@
   --tinta: #1A1A2E;
   --sombra-livro: 0 2px 12px rgba(27,54,84,.08);
   --sombra-hover: 0 4px 20px rgba(27,54,84,.12);
+  /* Cores da marca FLIPED (do logo) */
+  --flip-laranja: #E9551F;
+  --flip-laranja-soft: #FF7A3C;
+  --flip-ciano: #35B9E9;
+  --flip-azul: #1C86C9;
+  --flip-amarelo: #F4C13E;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -36,72 +44,65 @@ body {
   min-height: 100vh; display: flex; flex-direction: column; align-items: center;
 }
 
-/* ═══ LOGIN ═══ */
+/* ═══ LOGIN (design FLIPED — cara de Feira Literária) ═══ */
 .login-screen {
-  min-height: 100vh; width: 100%;
+  min-height: 100vh; width: 100%; padding: 24px;
   display: flex; align-items: center; justify-content: center;
-  background: var(--livro-navy-deep);
-  background-image:
-    radial-gradient(ellipse at 20% 50%, rgba(212,168,67,.08) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 20%, rgba(42,140,90,.06) 0%, transparent 40%);
+  background:
+    radial-gradient(1100px 560px at 10% -12%, rgba(233,85,31,.18), transparent 58%),
+    radial-gradient(1000px 680px at 112% 118%, rgba(53,185,233,.20), transparent 55%),
+    linear-gradient(165deg, #FFF7EE 0%, #FDEFF1 46%, #EAF6FC 100%);
   position: relative; overflow: hidden;
 }
-.login-screen::before {
-  content: '';
-  position: absolute; inset: 0;
-  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 5 L30 55 M15 15 L30 5 L45 15' stroke='rgba(255,255,255,.03)' fill='none' stroke-width='1'/%3E%3C/svg%3E");
-  background-size: 60px 60px;
+.login-screen::before {   /* doodles suaves (livrinhos + estrelas) */
+  content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .55;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150' viewBox='0 0 150 150'%3E%3Cg fill='none' stroke='%231C86C9' stroke-opacity='.10' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 30h20a5 5 0 0 1 5 5v22a4 4 0 0 0-4-4H22z'/%3E%3Cpath d='M72 30H52a5 5 0 0 0-5 5v22a4 4 0 0 1 4-4h21z'/%3E%3C/g%3E%3Cg fill='none' stroke='%23E9551F' stroke-opacity='.10' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M112 98l4 8 9 1-6.5 6 1.6 9-8.1-4.3-8.1 4.3 1.6-9L96 107l9-1z'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 150px 150px;
 }
 .login-box {
-  background: var(--pagina); border-radius: 20px; padding: 44px 36px 36px;
-  width: 100%; max-width: 380px;
-  box-shadow: 0 24px 80px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.05);
-  text-align: center; position: relative; z-index: 1;
-  animation: loginAppear .5s ease-out;
+  background: #fff; border-radius: 28px; padding: 40px 34px 28px;
+  width: 100%; max-width: 400px;
+  box-shadow: 0 30px 70px -22px rgba(28,54,84,.38), 0 4px 14px rgba(28,54,84,.08);
+  text-align: center; position: relative; z-index: 1; overflow: hidden;
+  animation: loginAppear .55s cubic-bezier(.2,.85,.25,1);
+}
+.login-box::before {   /* faixa arco-íris da marca no topo do card */
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 7px;
+  background: linear-gradient(90deg, var(--flip-laranja) 0%, var(--flip-amarelo) 34%, var(--flip-ciano) 67%, var(--flip-azul) 100%);
 }
 @keyframes loginAppear {
-  from { opacity: 0; transform: translateY(16px) scale(.97); }
+  from { opacity: 0; transform: translateY(18px) scale(.97); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
-.login-icon {
-  width: 64px; height: 64px; margin: 0 auto 16px;
-  background: linear-gradient(135deg, var(--livro-navy) 0%, var(--livro-navy-soft) 100%);
-  border-radius: 16px; display: flex; align-items: center; justify-content: center;
-  font-size: 30px; box-shadow: 0 4px 16px rgba(27,54,84,.2);
-}
-.login-box h2 {
-  font-size: 24px; font-weight: 900; color: var(--livro-navy);
-  margin-bottom: 2px; letter-spacing: -.3px;
+.login-icon { display: none; }
+.login-logo { display: block; width: 100%; max-width: 248px; height: auto; margin: 12px auto 16px; }
+.login-box h2.login-title {
+  font-size: 22px; font-weight: 900; color: var(--livro-navy);
+  margin-bottom: 4px; letter-spacing: -.3px;
 }
 .login-box .login-subtitle {
-  font-size: 13px; color: var(--lousa); margin-bottom: 28px; font-weight: 600;
+  font-size: 14px; color: var(--lousa); margin-bottom: 26px; font-weight: 700;
 }
 .login-box input {
-  width: 100%; padding: 14px 16px; border: 2px solid var(--caderno-linha);
-  border-radius: 10px; font-size: 15px; font-family: inherit; outline: none;
-  margin-bottom: 12px; transition: all .2s; background: var(--papel-creme);
-  font-weight: 600; color: var(--tinta);
+  width: 100%; padding: 15px 16px; border: 2px solid #ECE4D8;
+  border-radius: 14px; font-size: 15px; font-family: inherit; outline: none;
+  margin-bottom: 12px; transition: all .18s; background: #FBF8F3;
+  font-weight: 700; color: var(--tinta);
 }
-.login-box input::placeholder { color: var(--lousa); font-weight: 500; }
-.login-box input:focus { border-color: var(--lapis-dourado); background: var(--pagina); box-shadow: 0 0 0 3px var(--lapis-dourado-light); }
+.login-box input::placeholder { color: #9AA7B4; font-weight: 600; }
+.login-box input:focus { border-color: var(--flip-ciano); background: #fff; box-shadow: 0 0 0 4px rgba(53,185,233,.18); }
 .login-btn {
-  width: 100%; padding: 15px; margin-top: 6px;
-  background: linear-gradient(135deg, var(--livro-navy) 0%, var(--livro-navy-soft) 100%);
-  color: #fff; border: none; border-radius: 10px; font-size: 16px; font-weight: 800;
-  cursor: pointer; font-family: inherit; transition: all .2s;
-  letter-spacing: .3px; position: relative; overflow: hidden;
+  width: 100%; padding: 16px; margin-top: 6px;
+  background: linear-gradient(135deg, var(--flip-laranja) 0%, var(--flip-laranja-soft) 100%);
+  color: #fff; border: none; border-radius: 14px; font-size: 16px; font-weight: 900;
+  cursor: pointer; font-family: inherit; transition: all .18s;
+  letter-spacing: .3px; box-shadow: 0 12px 24px -10px rgba(233,85,31,.62);
 }
-.login-btn::after {
-  content: ''; position: absolute; inset: 0;
-  background: linear-gradient(135deg, transparent 0%, rgba(212,168,67,.15) 100%);
-  opacity: 0; transition: opacity .2s;
-}
-.login-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(27,54,84,.3); }
-.login-btn:hover::after { opacity: 1; }
+.login-btn:hover { transform: translateY(-2px); box-shadow: 0 18px 30px -12px rgba(233,85,31,.68); }
 .login-btn:active { transform: translateY(0); }
-.login-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
-.login-error { color: var(--borracha-rosa); font-size: 13px; font-weight: 700; margin-top: 10px; display: none; }
-.login-footer { margin-top: 20px; font-size: 11px; color: var(--lousa); font-weight: 600; }
+.login-btn:disabled { opacity: .55; cursor: not-allowed; transform: none; box-shadow: none; }
+.login-error { color: var(--borracha-rosa); font-size: 13px; font-weight: 800; margin-top: 12px; display: none; }
+.login-footer { margin-top: 18px; font-size: 11.5px; color: #9AA7B4; font-weight: 700; line-height: 1.5; }
 
 /* ═══ PROF PANEL ═══ */
 .prof-header {
@@ -126,6 +127,7 @@ body {
   border-radius: 10px; display: flex; align-items: center; justify-content: center;
   font-size: 18px;
 }
+.prof-header-logo { height: 30px; width: auto; display: block; background: #fff; padding: 6px 10px; border-radius: 9px; }
 .prof-header h1 { color: #fff; font-size: 18px; font-weight: 900; letter-spacing: -.3px; }
 .prof-header .prof-badge {
   background: rgba(212,168,67,.12); color: var(--lapis-dourado-glow);
@@ -329,14 +331,14 @@ footer { margin-top: auto; padding: 20px; text-align: center; font-size: 12px; c
 <!-- ═══ TELA DE LOGIN ═══ -->
 <div id="loginScreen" class="login-screen">
   <div class="login-box">
-    <div class="login-icon">📖</div>
-    <h2>FLIPED</h2>
-    <div class="login-subtitle">Portal do Professor</div>
-    <input type="text" id="loginName" placeholder="Seu nome" autocomplete="off">
-    <input type="password" id="loginPassword" placeholder="Senha" autocomplete="off">
-    <button class="login-btn" id="loginBtn" onclick="doLogin()">Entrar no Painel</button>
+    <img src="/fliped-logo.png" alt="FLIPED — Feira Literária Pedagógica" class="login-logo">
+    <h2 class="login-title">Que bom te ver! 👋</h2>
+    <div class="login-subtitle">Entre para publicar os livros da sua turma</div>
+    <input type="text" id="loginName" placeholder="Seu nome (professor)" autocomplete="off" onkeydown="if(event.key==='Enter')doLogin()">
+    <input type="password" id="loginPassword" placeholder="Senha" autocomplete="off" onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="login-btn" id="loginBtn" onclick="doLogin()">Entrar</button>
     <div class="login-error" id="loginError"></div>
-    <div class="login-footer">Grupo PED — Estante Magica 2026</div>
+    <div class="login-footer">Professor: nome + senha · Coordenador: deixe o nome em branco e use a senha de coordenador<br>FLIPED</div>
   </div>
 </div>
 
@@ -347,8 +349,7 @@ footer { margin-top: auto; padding: 20px; text-align: center; font-size: 12px; c
   <div class="prof-header-inner">
     <div class="prof-header-left">
       <div class="prof-header-brand">
-        <div class="prof-header-brand-icon">📖</div>
-        <h1>FLIPED</h1>
+        <img src="/fliped-logo.png" alt="FLIPED — Feira Literária Pedagógica" class="prof-header-logo">
       </div>
       <span class="prof-badge" id="profBadge"></span>
     </div>
@@ -463,7 +464,7 @@ footer { margin-top: auto; padding: 20px; text-align: center; font-size: 12px; c
 
 </div>
 
-<footer style="display:none">Grupo PED — FLIPED 2026</footer>
+<footer style="display:none">FLIPED 2026</footer>
 
 <div id="qr-temp" style="position:absolute;left:-9999px;top:-9999px"></div>
 
@@ -478,9 +479,48 @@ const UNITS = [
   { id: 'ped-pituba', name: 'PED Pituba', short: 'PED-PIT', color: '#b45309' },
 ];
 
+// Se a sessão (cookie) expirar, qualquer /api responde 401 -> volta ao login.
+(function () {
+  const _f = window.fetch;
+  window.fetch = async function (url, opts) {
+    const res = await _f(url, opts);
+    try {
+      const u = (typeof url === 'string' ? url : (url && url.url)) || '';
+      if (res.status === 401 && u.indexOf('/api/') === 0 &&
+          u.indexOf('/api/professor/login') !== 0 && u.indexOf('/api/me') !== 0 &&
+          u.indexOf('/api/admin/login') !== 0) {
+        if (typeof onSessionExpired === 'function') onSessionExpired();
+      }
+    } catch (e) {}
+    return res;
+  };
+})();
+function onSessionExpired() {
+  loggedProfessor = null;
+  try { sessionStorage.removeItem('fliped_prof'); } catch (e) {}
+  const ls = document.getElementById('loginScreen');
+  const pp = document.getElementById('profPanel');
+  if (ls) ls.style.display = '';
+  if (pp) pp.style.display = 'none';
+}
+
 let students = JSON.parse(localStorage.getItem('em_students') || '[]');
 let selectedStudent = null;
 let loggedProfessor = null; // { id, name, unit, turmas[] }
+
+// Logo carregado uma vez e reutilizado nos PDFs (proporção preservada).
+let _flipedLogoImg = null, _flipedLogoPromise = null;
+function loadFlipedLogo() {
+  if (_flipedLogoImg) return Promise.resolve(_flipedLogoImg);
+  if (_flipedLogoPromise) return _flipedLogoPromise;
+  _flipedLogoPromise = new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => { _flipedLogoImg = img; resolve(img); };
+    img.onerror = () => resolve(null);
+    img.src = '/fliped-logo.png';
+  });
+  return _flipedLogoPromise;
+}
 
 function genCode(s) {
   const u = UNITS.find(x => x.id === s.unit);
@@ -727,27 +767,48 @@ async function doLogin() {
   const errEl = document.getElementById('loginError');
   const btn = document.getElementById('loginBtn');
 
-  if (!name || !password) { errEl.textContent = 'Preencha nome e senha'; errEl.style.display = ''; return; }
+  if (!password) { errEl.textContent = 'Informe a senha'; errEl.style.display = ''; return; }
 
   btn.disabled = true; btn.textContent = 'Entrando...';
   errEl.style.display = 'none';
 
   try {
-    const res = await fetch('/api/professor/login', {
+    // 1) Se informou nome, tenta entrar como PROFESSOR
+    if (name) {
+      const res = await fetch('/api/professor/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, password })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          loggedProfessor = data.professor;
+          sessionStorage.setItem('fliped_prof', JSON.stringify(loggedProfessor));
+          showProfPanel();
+          // Agora autenticado (cookie): puxa os dados do servidor e re-renderiza.
+          try { await syncStudentsFromServer(); renderProfStats(); renderProfAlunos(); } catch (e) {}
+          btn.disabled = false; btn.textContent = 'Entrar';
+          return;
+        }
+      }
+      // Falhou como professor → tenta como coordenador (mesma senha) abaixo
+    }
+
+    // 2) Tenta entrar como COORDENADOR (senha única). O nome é ignorado.
+    const resAdmin = await fetch('/api/admin/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, password })
+      body: JSON.stringify({ password })
     });
-    const data = await res.json();
-
-    if (data.success) {
-      loggedProfessor = data.professor;
-      sessionStorage.setItem('fliped_prof', JSON.stringify(loggedProfessor));
-      showProfPanel();
-    } else {
-      errEl.textContent = data.error || 'Nome ou senha incorretos';
-      errEl.style.display = '';
+    if (resAdmin.ok) {
+      // Coordenador autenticado → vai para o painel do coordenador.
+      window.location.href = '/';
+      return;
     }
+
+    errEl.textContent = name ? 'Nome ou senha incorretos' : 'Senha incorreta';
+    errEl.style.display = '';
   } catch(e) {
     errEl.textContent = 'Erro de conexao. Tente novamente.';
     errEl.style.display = '';
@@ -1006,6 +1067,24 @@ async function init() {
   if (saved) {
     loggedProfessor = JSON.parse(saved);
     showProfPanel();
+  } else {
+    // Sem sessão local: confere o cookie no servidor (ex.: chegou redirecionado
+    // do login unificado, ou abriu esta página já autenticado noutra aba).
+    try {
+      const me = await fetch('/api/me');
+      if (me.ok) {
+        const u = await me.json();
+        if (u.role === 'professor') {
+          loggedProfessor = { name: u.name, unit: u.unit, turmas: u.turmas || [] };
+          sessionStorage.setItem('fliped_prof', JSON.stringify(loggedProfessor));
+          showProfPanel();
+          try { await syncStudentsFromServer(); renderProfStats(); renderProfAlunos(); } catch (e) {}
+        } else if (u.role === 'admin') {
+          window.location.replace('/'); // coordenador logado → painel do coordenador
+          return;
+        }
+      }
+    } catch (e) {}
   }
   // Polling a cada 5 min — detecta deploy novo e avisa (sem recarregar sozinho)
   setInterval(checkAppVersion, 5 * 60 * 1000);
@@ -1029,9 +1108,17 @@ async function buildPage(doc, s, pageNum, totalPages) {
   // ── HEADER BAR (azul)
   doc.setFillColor(30, 64, 175);
   doc.rect(0, 0, W, 20, 'F');
-  doc.setTextColor(255); doc.setFontSize(10); doc.setFont('helvetica', 'bold');
-  doc.text('FLIPED — GRUPO PED', m, 9);
-  doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+  // Logo FLIPED num quadrinho branco (à esquerda). Fallback: texto branco.
+  const _logo = await loadFlipedLogo();
+  if (_logo) {
+    const lh = 11, lw = lh * (_logo.naturalWidth / _logo.naturalHeight);
+    doc.setFillColor(255, 255, 255); doc.roundedRect(m - 2, 3, lw + 4, lh + 3, 2, 2, 'F');
+    doc.addImage(_logo, 'PNG', m, 4.5, lw, lh);
+  } else {
+    doc.setTextColor(255); doc.setFontSize(10); doc.setFont('helvetica', 'bold');
+    doc.text('FLIPED', m, 9);
+  }
+  doc.setTextColor(255); doc.setFontSize(8); doc.setFont('helvetica', 'normal');
   doc.text(u ? u.name.toUpperCase() : '', W - m, 9, { align: 'right' });
   doc.text(`Folha ${pageNum}/${totalPages} | Fotografe esta folha depois de pronta`, W - m, 15, { align: 'right' });
 
@@ -1090,7 +1177,7 @@ async function buildPage(doc, s, pageNum, totalPages) {
 
   doc.setFontSize(8); doc.setFont('helvetica', 'normal');
   doc.text(s.name, m, footY + 19);
-  doc.text(`${s.turma} | ${u ? u.name : ''} | Grupo PED 2026`, m, footY + 25);
+  doc.text(`${s.turma} | ${u ? u.name : ''} | FLIPED 2026`, m, footY + 25);
 
   // Linha separadora vertical antes do QR
   doc.setDrawColor(100, 116, 139); doc.setLineWidth(0.3);
@@ -1390,7 +1477,7 @@ async function doUploadLote() {
   const btn = document.getElementById('btnUploadLote');
   const el = document.getElementById('successLote');
   btn.disabled = true;
-  btn.textContent = `⏳ Enviando ${loteFiles.length} arquivo(s) ao Google Drive...`;
+  btn.textContent = `⏳ Enviando ${loteFiles.length} desenho(s)...`;
 
   try {
     const u = UNITS.find(x => x.id === selectedStudent.unit);
@@ -1408,18 +1495,23 @@ async function doUploadLote() {
     const data = await res.json();
 
     if (data.success) {
-      data.files.forEach((f, i) => {
-        if (i < turmaStudents.length) {
-          turmaStudents[i].hasDrawing = true;
-          turmaStudents[i].status = 'done';
-          turmaStudents[i].uploadedAt = new Date().toISOString();
-          turmaStudents[i].driveFileId = f.fileId;
-          turmaStudents[i].driveLink = f.link;
+      // Casa cada arquivo ao aluno pelo studentId retornado pelo servidor
+      // (e não pela posição) — evita marcar/atribuir ao aluno errado.
+      const byId = {};
+      for (const s of students) byId[s.id] = s;
+      data.files.forEach((f) => {
+        const s = byId[f.studentId];
+        if (s) {
+          s.hasDrawing = true;
+          s.status = 'done';
+          s.uploadedAt = new Date().toISOString();
+          s.driveFileId = f.fileId;
+          s.driveLink = f.link;
         }
       });
       localStorage.setItem('em_students', JSON.stringify(students));
       for (const st of turmaStudents) { await syncStudentToServer(st); }
-      el.textContent = `✓ ${data.uploaded} arquivo(s) enviados ao Google Drive — turma ${selectedStudent.turma}`;
+      el.textContent = `✓ ${data.uploaded} desenho(s) enviados — turma ${selectedStudent.turma}`;
       el.style.display = '';
     } else {
       throw new Error(data.error);
