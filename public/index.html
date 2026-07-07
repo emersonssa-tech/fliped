@@ -42,7 +42,7 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: v
 .sidebar-brand h1 { font-size: 16px; font-weight: 700; color: #fff; letter-spacing: -.3px; }
 .sidebar-brand .brand-logo { display: block; width: 100%; max-width: 160px; height: auto; background: #fff; padding: 9px 12px; border-radius: 10px; box-sizing: border-box; }
 .sidebar-brand span { font-size: 11px; color: var(--chalk-gray); display: block; margin-top: 8px; }
-.sidebar-section { padding: 16px 12px 8px; }
+.sidebar-section { padding: 16px 12px 8px; flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .sidebar-section-title {
   font-size: 10px; font-weight: 600; color: var(--chalk-gray);
   text-transform: uppercase; letter-spacing: .8px; padding: 0 8px 8px;
@@ -57,7 +57,7 @@ body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: v
 .unit-btn.active { background: var(--binding-blue); color: #fff; }
 .unit-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
-.sidebar-nav { margin-top: auto; padding: 12px; border-top: 1px solid rgba(255,255,255,.08); }
+.sidebar-nav { flex-shrink: 0; padding: 12px; border-top: 1px solid rgba(255,255,255,.08); }
 .nav-btn {
   display: flex; align-items: center; gap: 10px; width: 100%;
   padding: 10px 12px; border: none; background: transparent;
