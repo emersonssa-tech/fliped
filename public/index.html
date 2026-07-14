@@ -611,6 +611,43 @@ function save() {
 function getTeacherKey(unit, turma) { return `${unit}|${turma}`; }
 function getTeacher(unit, turma) { return turmaTeachers[getTeacherKey(unit, turma)] || ''; }
 
+// ═══ PROFESSOR(A) POR TURMA — sincronização com o servidor ═══
+// O mapa de professores por turma agora vive no servidor (compartilhado entre
+// dispositivos). Este bloco: (1) puxa o mapa do servidor no boot, (2) migra pro
+// servidor o que só existia neste navegador, (3) empurra cada edição.
+async function syncTeachersFromServer() {
+  try {
+    const res = await fetch('/api/teachers');
+    if (!res.ok) return; // sem sessão admin / offline — segue com o local
+    const server = await res.json() || {};
+    // Chaves que só existem localmente (ainda não estão no servidor) → migrar.
+    const localOnly = {};
+    for (const [k, v] of Object.entries(turmaTeachers)) {
+      if (v && !server[k]) localOnly[k] = v;
+    }
+    // Servidor é a fonte da verdade; preserva chaves locais ainda não migradas.
+    const merged = { ...turmaTeachers, ...server };
+    const changed = JSON.stringify(merged) !== JSON.stringify(turmaTeachers);
+    turmaTeachers = merged;
+    localStorage.setItem('em_teachers', JSON.stringify(turmaTeachers));
+    if (Object.keys(localOnly).length) {
+      await fetch('/api/teachers/merge', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teachers: localOnly })
+      }).catch(() => {});
+    }
+    if (changed && typeof renderAll === 'function') renderAll();
+  } catch (e) { /* offline: mantém o cache local */ }
+}
+async function pushTeacher(key, name) {
+  try {
+    await fetch('/api/teachers', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, name: name || '' })
+    });
+  } catch (e) { /* offline: fica salvo localmente e sobe no próximo sync */ }
+}
+
 // ═══ SEED (carrega alunos do JSON se localStorage vazio) ═══
 async function seedStudents() {
   if (students.length > 0) return;
@@ -738,6 +775,7 @@ async function pollSyncStudents() {
     if (changed) {
       try { renderUnits(); renderAll(); } catch(e) {}
     }
+    await syncTeachersFromServer(); // mantém professor(a) por turma em dia entre coordenadores
   } finally { _syncing = false; }
 }
 
@@ -935,6 +973,7 @@ async function init() {
   await seedStudents();
   await checkSeedVersion();
   await syncStudentsFromServer();
+  await syncTeachersFromServer(); // professor(a) por turma: puxa do servidor + migra local
   renderUnits(); renderAll(); populateSelects();
   // Polling a cada 5 min — detecta deploy novo e avisa (sem recarregar sozinho)
   setInterval(checkAppVersion, 5 * 60 * 1000);
@@ -1653,12 +1692,15 @@ function editTeacher(unit, turma) {
   const current = turmaTeachers[key] || '';
   const name = prompt(`Professor(a) responsável pela turma ${turma}:`, current);
   if (name === null) return; // cancelled
-  if (name.trim()) {
-    turmaTeachers[key] = name.trim();
+  const clean = name.trim();
+  if (clean) {
+    turmaTeachers[key] = clean;
   } else {
     delete turmaTeachers[key];
   }
-  save(); renderAll();
+  save();
+  pushTeacher(key, clean); // persiste no servidor (vale em qualquer dispositivo)
+  renderAll();
 }
 
 // ═══ GESTÃO DE PROFESSORES ═══
@@ -1751,10 +1793,11 @@ async function saveProfessor() {
     });
     const data = await res.json();
     if (data.success) {
-      // Atualizar turmaTeachers local
+      // Atualizar turmaTeachers local + servidor
       turmas.forEach(t => {
         const key = getTeacherKey(unit, t);
         turmaTeachers[key] = name;
+        pushTeacher(key, name);
       });
       save();
       closeModal('modalProfessor');

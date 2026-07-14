@@ -29,6 +29,8 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const PROFESSORS_FILE = path.join(DATA_DIR, 'professors.json');
 // ═══ ALUNOS / TEXTOS (persistência em JSON, compartilhado entre todos) ═══
 const STUDENTS_FILE = path.join(DATA_DIR, 'students.json');
+// ═══ PROFESSOR(A) RESPONSÁVEL POR TURMA (mapa unit|turma → nome, compartilhado) ═══
+const TEACHERS_FILE = path.join(DATA_DIR, 'teachers.json');
 
 // ═══ UPLOADS LOCAIS (Volume persistente) ═══
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
@@ -62,6 +64,7 @@ async function saveToVolume(fileBuffer, fileName, unitName, turma) {
 // concorrentes.
 let professorsData = [];   // array
 let studentsData = {};     // dicionário por studentKey
+let teachersData = {};     // dicionário unit|turma → nome da professora responsável
 
 async function ensureDataDir() {
   await fsp.mkdir(DATA_DIR, { recursive: true });
@@ -112,13 +115,21 @@ async function initData() {
   await ensureDataDir();
   professorsData = await readJsonOrAbort(PROFESSORS_FILE, [], 'professors.json');
   studentsData = await readJsonOrAbort(STUDENTS_FILE, {}, 'students.json');
-  console.log(`Dados carregados: ${professorsData.length} professores, ${Object.keys(studentsData).length} alunos`);
+  teachersData = await readJsonOrAbort(TEACHERS_FILE, {}, 'teachers.json');
+  console.log(`Dados carregados: ${professorsData.length} professores, ${Object.keys(studentsData).length} alunos, ${Object.keys(teachersData).length} turmas com professor(a)`);
 }
 
 function loadProfessors() { return professorsData; }
 async function saveProfessors(profs) {
   professorsData = profs;
   await atomicWriteJson(PROFESSORS_FILE, professorsData);
+}
+
+// ── Professor(a) responsável por turma: mapa compartilhado unit|turma → nome ──
+function loadTeachers() { return teachersData; }
+async function saveTeachers(data) {
+  teachersData = data;
+  await atomicWriteJson(TEACHERS_FILE, teachersData);
 }
 
 // ── Alunos: dados compartilhados de texto/status, indexados por chave estável ──
@@ -647,6 +658,51 @@ app.delete('/api/professors/:id', requireAuth('admin'), async (req, res) => {
   profs = profs.filter(p => p.id !== req.params.id);
   await saveProfessors(profs);
   res.json({ success: true });
+});
+
+// ═══ PROFESSOR(A) RESPONSÁVEL POR TURMA — mapa compartilhado ═══
+// Antes esse mapa vivia só no localStorage do navegador do coordenador, então
+// sumia ao trocar de máquina/navegador. Agora é persistido no servidor e vale
+// para qualquer dispositivo.
+
+// Retorna o mapa completo { "unit|turma": "Nome da Professora" }
+app.get('/api/teachers', requireAuth('admin'), (req, res) => {
+  res.json(loadTeachers());
+});
+
+// Define/remove o professor(a) de UMA turma (upsert por chave — seguro para
+// edições concorrentes, não sobrescreve o mapa inteiro).
+// Body: { key: "unit|turma", name: "Nome" }  — name vazio remove a chave.
+app.post('/api/teachers', requireAuth('admin'), async (req, res) => {
+  const { key, name } = req.body || {};
+  if (!key || typeof key !== 'string') {
+    return res.status(400).json({ error: 'Campo obrigatório: key ("unit|turma")' });
+  }
+  const teachers = { ...loadTeachers() };
+  const clean = String(name || '').trim();
+  if (clean) teachers[key] = clean;
+  else delete teachers[key];
+  await saveTeachers(teachers);
+  res.json({ success: true, teachers });
+});
+
+// Mescla vários de uma vez (usado na migração das entradas que só existiam no
+// localStorage). Body: { teachers: { "unit|turma": "Nome", ... } }.
+// Só ADICIONA chaves que ainda não existem no servidor — nunca sobrescreve o
+// que já foi salvo por outra pessoa.
+app.post('/api/teachers/merge', requireAuth('admin'), async (req, res) => {
+  const incoming = (req.body && req.body.teachers) || {};
+  if (typeof incoming !== 'object' || Array.isArray(incoming)) {
+    return res.status(400).json({ error: 'Campo obrigatório: teachers (objeto)' });
+  }
+  const teachers = { ...loadTeachers() };
+  let added = 0;
+  for (const [key, name] of Object.entries(incoming)) {
+    const clean = String(name || '').trim();
+    if (clean && !teachers[key]) { teachers[key] = clean; added++; }
+  }
+  if (added) await saveTeachers(teachers);
+  res.json({ success: true, added, teachers });
 });
 
 // ═══ ALUNOS — TEXTOS E STATUS (compartilhado entre todos os usuários) ═══
