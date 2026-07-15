@@ -767,13 +767,27 @@ async function syncStudentsFromServer() {
 // Polling: a cada 30s puxa do servidor. Se algo mudou (professora salvou
 // texto, marcou revisado, etc.), re-renderiza a tela atual sem F5 do usuário.
 let _syncing = false;
+// O usuário está digitando num <textarea> (revisão/upload)? Se sim, NÃO podemos
+// re-renderizar por cima — o innerHTML seria reconstruído e o texto em edição
+// voltaria ao último valor salvo (bug relatado pelo Coord. Ribeiro).
+function isTypingInTextarea() {
+  const el = document.activeElement;
+  return !!(el && el.tagName === 'TEXTAREA');
+}
+let _pendingSyncRerender = false;
 async function pollSyncStudents() {
   if (_syncing || _reloadingForUpdate) return;
   _syncing = true;
   try {
     const changed = await syncStudentsFromServer();
     if (changed) {
-      try { renderUnits(); renderAll(); } catch(e) {}
+      // Dados já foram mesclados no array/localStorage. Só adiamos a parte
+      // VISUAL enquanto há edição em andamento, pra não apagar o que ele digita.
+      if (isTypingInTextarea()) {
+        _pendingSyncRerender = true;
+      } else {
+        try { renderUnits(); renderAll(); } catch(e) {}
+      }
     }
     await syncTeachersFromServer(); // mantém professor(a) por turma em dia entre coordenadores
   } finally { _syncing = false; }
@@ -985,6 +999,18 @@ async function init() {
     if (document.visibilityState === 'visible') {
       checkAppVersion();
       pollSyncStudents();
+    }
+  });
+  // Ao sair de um textarea, se um refresh foi adiado durante a edição, aplica
+  // agora (mostra o que outros salvaram, sem ter atrapalhado a digitação).
+  document.addEventListener('focusout', (e) => {
+    if (e.target && e.target.tagName === 'TEXTAREA' && _pendingSyncRerender) {
+      setTimeout(() => {
+        if (!isTypingInTextarea() && _pendingSyncRerender) {
+          _pendingSyncRerender = false;
+          try { renderUnits(); renderAll(); } catch(err) {}
+        }
+      }, 300);
     }
   });
 }
