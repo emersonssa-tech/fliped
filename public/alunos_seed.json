@@ -8260,6 +8260,16 @@
     "unit": "ped-lauro"
   },
   {
+    "name": "OLÍVIA DUPLAT BORGES",
+    "turma": "Grupo 1 - A",
+    "unit": "ped-lauro"
+  },
+  {
+    "name": "SAMUEL CURVELO DE JESUS ROCHA",
+    "turma": "Grupo 1 - A",
+    "unit": "ped-lauro"
+  },
+  {
     "name": "ANTHONY FREITAS ROCHA ANDRADE",
     "turma": "GRUPO 2A - MAT - A",
     "unit": "ped-lauro"
@@ -8306,6 +8316,16 @@
   },
   {
     "name": "ULISSES PIRES GOMES DOS SANTOS",
+    "turma": "GRUPO 2A - MAT - A",
+    "unit": "ped-lauro"
+  },
+  {
+    "name": "AGATHA ARAGÃO MASCARENHAS",
+    "turma": "GRUPO 2A - MAT - A",
+    "unit": "ped-lauro"
+  },
+  {
+    "name": "BERNARDO NUNES FARIAS",
     "turma": "GRUPO 2A - MAT - A",
     "unit": "ped-lauro"
   },
@@ -9933,5 +9953,45 @@
     "name": "MARINA SIPAÚBA CAVALCANTI GUEDES",
     "turma": "5º Ano B - VESP - B",
     "unit": "ped-lauro"
+  },
+  {
+    "name": "Ayla de Araujo Sampaio",
+    "turma": "Grupo 4",
+    "unit": "coc-horto"
+  },
+  {
+    "name": "Gael Chagas Brandão",
+    "turma": "Grupo 4",
+    "unit": "coc-horto"
+  },
+  {
+    "name": "Gustavo Pino Alves",
+    "turma": "Grupo 4",
+    "unit": "coc-horto"
+  },
+  {
+    "name": "Helena Moreira Nonato",
+    "turma": "Grupo 4",
+    "unit": "coc-horto"
+  },
+  {
+    "name": "João Augusto Moreira Lima",
+    "turma": "Grupo 4",
+    "unit": "coc-horto"
+  },
+  {
+    "name": "Maria Alice Medeiros Leite",
+    "turma": "Grupo 4",
+    "unit": "coc-horto"
+  },
+  {
+    "name": "Milena de Menezes Vitoriano",
+    "turma": "Grupo 4",
+    "unit": "coc-horto"
+  },
+  {
+    "name": "Pedro Sala Duque",
+    "turma": "Grupo 4",
+    "unit": "coc-horto"
   }
 ]
