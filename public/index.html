@@ -745,8 +745,19 @@ async function syncStudentsFromServer() {
     const byKey = new Map();
     students.forEach(s => byKey.set(studentKey(s), s));
     let changed = false;
+    // Alunos excluídos (lápide no servidor) saem da lista local — vale pra
+    // exclusões feitas em qualquer navegador e pra entradas que o seed recria.
+    const removedKeys = new Set();
     Object.values(serverData).forEach(sv => {
-      if (!sv || !sv.unit || !sv.turma || !sv.name) return;
+      if (sv && sv.removed && sv.unit && sv.turma && sv.name) removedKeys.add(studentKey(sv));
+    });
+    if (removedKeys.size) {
+      const before = students.length;
+      students = students.filter(s => !removedKeys.has(studentKey(s)));
+      if (students.length !== before) { changed = true; byKey.clear(); students.forEach(s => byKey.set(studentKey(s), s)); }
+    }
+    Object.values(serverData).forEach(sv => {
+      if (!sv || !sv.unit || !sv.turma || !sv.name || sv.removed) return;
       const k = studentKey(sv);
       let s = byKey.get(k);
       if (!s) {
@@ -807,8 +818,9 @@ function _emitSaveStatus(state, detail) {
   try { window.dispatchEvent(new CustomEvent('fliped:savestatus', { detail: { state, ...detail } })); } catch(e) {}
   console.log('[FLIPED save]', state, detail || '');
 }
-function _buildPayload(s) {
+function _buildPayload(s, extra) {
   return {
+    ...(extra || {}),
     unit: s.unit, turma: s.turma, name: s.name,
     storyText: s.storyText || '', status: s.status || 'pending',
     hasDrawing: !!s.hasDrawing, textReviewed: !!s.textReviewed,
@@ -824,8 +836,8 @@ async function _postSave(payload) {
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return res.json();
 }
-async function syncStudentToServer(s) {
-  const payload = _buildPayload(s);
+async function syncStudentToServer(s, extra) {
+  const payload = _buildPayload(s, extra);
   _emitSaveStatus('saving', { name: s.name });
   let lastErr = null;
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -1138,6 +1150,8 @@ function doImport() {
     });
   });
   save(); closeModal('modalImport');
+  // Grava no servidor pra aparecer nos outros navegadores (e desfazer exclusão antiga)
+  students.slice(-names.length).forEach(st => syncStudentToServer(st, { restore: true }));
   document.getElementById('importNames').value = '';
   document.getElementById('importTurma').value = '';
   renderUnits(); renderAll();
@@ -1149,19 +1163,41 @@ function doAddStudent() {
   const turma = document.getElementById('addTurma').value.trim();
   const name = document.getElementById('addName').value.trim();
   if (!unit || !turma || !name) { alert('Preencha todos os campos'); return; }
-  students.push({
+  const novo = {
     id: crypto.randomUUID(), name, turma, unit,
     status: 'pending', pdfGenerated: false, uploadedAt: null,
     storyText: '', textReviewed: false, hasDrawing: false
-  });
+  };
+  students.push(novo);
   save(); closeModal('modalAdd');
+  syncStudentToServer(novo, { restore: true });
   document.getElementById('addName').value = '';
   renderUnits(); renderAll();
 }
 
-function removeStudent(id) {
-  if (!confirm('Remover este aluno?')) return;
-  students = students.filter(s => s.id !== id);
+async function removeStudent(id) {
+  const s = students.find(x => x.id === id);
+  if (!s) return;
+  if (!confirm(`Remover ${s.name} (${s.turma})?`)) return;
+  // A exclusão precisa ficar no SERVIDOR — antes era só local e o aluno voltava
+  // (seed / sincronização de 30s) e nunca saía dos outros navegadores.
+  try {
+    const res = await fetch('/api/students/remove', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ unit: s.unit, turma: s.turma, name: s.name })
+    });
+    if (res.status === 401) { alert('Sua sessão expirou. Saia e entre de novo no FLIPED, depois exclua novamente.'); return; }
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      alert('Não foi possível excluir: ' + (j.error || ('HTTP ' + res.status)));
+      return;
+    }
+  } catch (e) {
+    alert('Sem conexão com o servidor — a exclusão não foi feita. Tente novamente.');
+    return;
+  }
+  const k = studentKey(s);
+  students = students.filter(x => studentKey(x) !== k);
   save(); renderUnits(); renderAll();
 }
 
@@ -1189,7 +1225,15 @@ function doEditStudent() {
   if (!unit || !turma || !name) { alert('Preencha todos os campos'); return; }
   if (unit === s.unit && turma === s.turma && name === s.name) { closeModal('modalEdit'); return; }
   const oldCode = genCode(s);
+  const from = { unit: s.unit, turma: s.turma, name: s.name };
   s.unit = unit; s.turma = turma; s.name = name;
+  // Move texto/desenho/status pra chave nova no servidor e marca a antiga como
+  // excluída — senão a sincronização recriava o aluno na turma antiga (duplicado).
+  fetch('/api/students/rename', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from, to: { unit, turma, name } })
+  }).then(r => { if (!r.ok) alert('Atenção: a alteração não foi gravada no servidor (HTTP ' + r.status + '). Saia e entre de novo e refaça a edição.'); })
+    .catch(() => alert('Sem conexão: a alteração ficou só neste computador. Refaça quando a internet voltar.'));
   const newCode = genCode(s);
   if (oldCode !== newCode && s.pdfGenerated) {
     alert('Atenção: o código de identificação mudou de ' + oldCode + ' para ' + newCode + '. Gere o PDF novamente para esse aluno.');
@@ -1357,20 +1401,29 @@ async function doUpload() {
       formData.append('studentId', s.id);
       formData.append('turma', s.turma);
       formData.append('unitName', u?u.name:s.unit);
+      formData.append('unit', s.unit);
       formData.append('storyText', text);
 
       const res=await fetch('/api/upload',{method:'POST',body:formData});
-      const data=await res.json();
-      if(data.success){
+      const data=await res.json().catch(()=>({}));
+      if(res.ok && data.success){
         s.hasDrawing=true;
         s.driveFileId=data.file.id;
         s.driveLink=data.file.link;
       } else {
-        s.hasDrawing=true; // fallback local
+        // Antes marcava "desenho enviado" mesmo com falha — ao recarregar, sumia.
+        const motivo = res.status===401 ? 'sua sessão expirou. Saia e entre de novo no FLIPED'
+          : res.status===413 ? 'o arquivo é grande demais. Tente uma foto/PDF menor'
+          : (data.error || ('erro HTTP '+res.status));
+        alert(`O desenho de ${s.name} NÃO foi enviado: ${motivo}.`);
+        return;
       }
     }
   } catch(e) {
-    if(uploadFileSelected) s.hasDrawing=true; // fallback local
+    if(uploadFileSelected){
+      alert(`O desenho de ${s.name} NÃO foi enviado (sem conexão com o servidor). Tente novamente.`);
+      return;
+    }
   }
 
   if(text) s.storyText=text;

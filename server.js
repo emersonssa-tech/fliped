@@ -373,6 +373,13 @@ app.post('/api/upload', requireAuth(), upload.single('file'), async (req, res) =
 
     const saved = await saveToVolume(req.file.buffer, fileName, unitName, turma);
 
+    // O próprio upload marca o desenho no registro do aluno (antes dependia de
+    // um 2º request do navegador — se esse falhasse, o desenho "sumia" ao recarregar).
+    const unitId = req.body.unit;
+    if (unitId && (req.user.role !== 'professor' || unitId === req.user.unit)) {
+      await markDrawing(unitId, turma, studentName, saved);
+    }
+
     res.json({
       success: true,
       file: {
@@ -402,6 +409,8 @@ app.post('/api/upload-batch', requireAuth(), upload.array('files', 50), async (r
     }
 
     const ids = JSON.parse(studentIds || '[]');
+    const names = JSON.parse(req.body.studentNames || '[]');
+    const unitId = req.body.unit;
     // Cada arquivo PRECISA estar pareado a um aluno (mesma ordem). Se as
     // contagens divergem, recusa: melhor falhar do que associar ao aluno errado.
     if (ids.length !== req.files.length) {
@@ -425,6 +434,9 @@ app.post('/api/upload-batch', requireAuth(), upload.array('files', 50), async (r
       const fileName = `${slug(turma)}_${slug(String(studentId))}${ext}`;
 
       const saved = await saveToVolume(file.buffer, fileName, unitName, turma);
+      if (unitId && names[i] && (req.user.role !== 'professor' || unitId === req.user.unit)) {
+        await markDrawing(unitId, turma, names[i], saved);
+      }
       results.push({
         index: i,
         studentId,
@@ -738,12 +750,98 @@ app.post('/api/students/save', requireAuth(), async (req, res) => {
     ['storyText', 'status', 'hasDrawing', 'textReviewed', 'pdfGenerated', 'driveLink', 'driveFileId'].forEach(f => {
       if (req.body[f] !== undefined) next[f] = req.body[f];
     });
+    // Desenho só "nasce" pelo upload e não é desfeito por um save com dados
+    // velhos de outro navegador (cache/fila offline gravava hasDrawing:false).
+    if (prev.hasDrawing) next.hasDrawing = true;
+    if (prev.driveLink && !next.driveLink) next.driveLink = prev.driveLink;
+    if (prev.driveFileId && !next.driveFileId) next.driveFileId = prev.driveFileId;
+    // Aluno excluído só volta se a ação for explícita (cadastrar/editar).
+    if (req.body.restore === true) { delete next.removed; delete next.removedAt; delete next.removedBy; }
     next.updatedAt = new Date().toISOString();
     data[key] = next;
     await saveStudentData(data);
     res.json({ success: true, student: next });
   } catch (e) {
     console.error('Erro ao salvar aluno:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Marca o desenho de um aluno direto no servidor (chamado pelos uploads).
+async function markDrawing(unit, turma, name, saved) {
+  if (!unit || !turma || !name) return;
+  const data = loadStudentData();
+  const key = studentKey(unit, turma, name);
+  const prev = data[key] || {};
+  const now = new Date().toISOString();
+  data[key] = {
+    ...prev, unit, turma, name,
+    hasDrawing: true,
+    driveLink: saved.link,
+    driveFileId: saved.name,
+    status: 'done',
+    uploadedAt: now,
+    updatedAt: now,
+  };
+  await saveStudentData(data);
+}
+
+// Exclusão PERSISTENTE: grava uma "lápide" (removed:true) na chave do aluno.
+// Antes a exclusão era só no navegador de quem clicou — o seed e o sync de 30s
+// traziam o aluno de volta, e nos outros navegadores ele nunca saía.
+// Body: { unit, turma, name }
+app.post('/api/students/remove', requireAuth(), async (req, res) => {
+  try {
+    const { unit, turma, name } = req.body || {};
+    if (!unit || !turma || !name) return res.status(400).json({ error: 'unit, turma e name são obrigatórios' });
+    if (req.user.role === 'professor' && unit !== req.user.unit) {
+      return res.status(403).json({ error: 'Você só pode excluir alunos da sua unidade' });
+    }
+    const data = loadStudentData();
+    const key = studentKey(unit, turma, name);
+    const prev = data[key] || {};
+    data[key] = {
+      ...prev, unit, turma, name,
+      removed: true, removedAt: new Date().toISOString(), removedBy: req.user.name || req.user.role,
+      updatedAt: new Date().toISOString(),
+    };
+    await saveStudentData(data);
+    res.json({ success: true, key });
+  } catch (e) {
+    console.error('Erro ao excluir aluno:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Edição de nome/turma/unidade: move o registro (texto, desenho, status) para a
+// chave nova e deixa lápide na antiga — senão o sync recriava o aluno antigo.
+// Body: { from: {unit,turma,name}, to: {unit,turma,name} }
+app.post('/api/students/rename', requireAuth(), async (req, res) => {
+  try {
+    const { from, to } = req.body || {};
+    if (!from || !to || !from.unit || !from.turma || !from.name || !to.unit || !to.turma || !to.name) {
+      return res.status(400).json({ error: 'from e to com unit, turma e name são obrigatórios' });
+    }
+    if (req.user.role === 'professor' && (from.unit !== req.user.unit || to.unit !== req.user.unit)) {
+      return res.status(403).json({ error: 'Você só pode editar alunos da sua unidade' });
+    }
+    const data = loadStudentData();
+    const oldKey = studentKey(from.unit, from.turma, from.name);
+    const newKey = studentKey(to.unit, to.turma, to.name);
+    if (oldKey === newKey) return res.json({ success: true, key: newKey });
+    const prev = data[oldKey] || {};
+    const dest = data[newKey] || {};
+    const now = new Date().toISOString();
+    const moved = { ...dest, ...prev, unit: to.unit, turma: to.turma, name: to.name, updatedAt: now };
+    if (dest.hasDrawing) moved.hasDrawing = true;
+    if (!moved.storyText && dest.storyText) moved.storyText = dest.storyText;
+    delete moved.removed; delete moved.removedAt; delete moved.removedBy;
+    data[newKey] = moved;
+    data[oldKey] = { unit: from.unit, turma: from.turma, name: from.name, removed: true, removedAt: now, removedBy: req.user.name || req.user.role, movedTo: newKey, updatedAt: now };
+    await saveStudentData(data);
+    res.json({ success: true, key: newKey, student: moved });
+  } catch (e) {
+    console.error('Erro ao renomear aluno:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -886,6 +984,20 @@ app.post('/api/professor/login', async (req, res) => {
       turmas: prof.turmas
     }
   });
+});
+
+// ═══ ERROS DE UPLOAD → JSON ═══
+// Sem isto, erro do multer (arquivo grande/tipo inválido) virava página HTML de
+// erro, o navegador não conseguia ler e o front fingia que o upload deu certo.
+app.use((err, req, res, next) => {
+  if (!err) return next();
+  if (res.headersSent) return next(err);
+  if (err instanceof multer.MulterError) {
+    const msg = err.code === 'LIMIT_FILE_SIZE' ? 'Arquivo muito grande (máx. 50 MB).' : `Erro no upload: ${err.message}`;
+    return res.status(err.code === 'LIMIT_FILE_SIZE' ? 413 : 400).json({ error: msg });
+  }
+  console.error('Erro não tratado:', err.message);
+  res.status(400).json({ error: err.message || 'Erro na requisição' });
 });
 
 // ═══ START ═══

@@ -630,8 +630,18 @@ async function syncStudentsFromServer() {
     const byKey = new Map();
     students.forEach(s => byKey.set(studentKey(s), s));
     let changed = false;
+    // Alunos excluídos pela coordenação (lápide no servidor) saem da lista.
+    const removedKeys = new Set();
     Object.values(serverData).forEach(sv => {
-      if (!sv || !sv.unit || !sv.turma || !sv.name) return;
+      if (sv && sv.removed && sv.unit && sv.turma && sv.name) removedKeys.add(studentKey(sv));
+    });
+    if (removedKeys.size) {
+      const before = students.length;
+      students = students.filter(s => !removedKeys.has(studentKey(s)));
+      if (students.length !== before) { changed = true; byKey.clear(); students.forEach(s => byKey.set(studentKey(s), s)); }
+    }
+    Object.values(serverData).forEach(sv => {
+      if (!sv || !sv.unit || !sv.turma || !sv.name || sv.removed) return;
       const k = studentKey(sv);
       let s = byKey.get(k);
       if (!s) {
@@ -1420,17 +1430,22 @@ async function doUploadIndiv() {
       formData.append('studentId', s.id);
       formData.append('turma', s.turma);
       formData.append('unitName', u ? u.name : s.unit);
+      formData.append('unit', s.unit);
       formData.append('storyText', text);
 
       const res = await fetch('/api/upload', { method: 'POST', body: formData });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
-      if (data.success) {
+      if (res.ok && data.success) {
         s.hasDrawing = true;
         s.driveFileId = data.file.id;
         s.driveLink = data.file.link;
       } else {
-        throw new Error(data.error || 'Falha no upload');
+        const err = new Error(res.status === 401 ? 'Sua sessão expirou. Saia e entre de novo'
+          : res.status === 413 ? 'Arquivo grande demais'
+          : (data.error || ('Falha no upload (HTTP ' + res.status + ')')));
+        err.uploadFailed = true;
+        throw err;
       }
     }
 
@@ -1442,15 +1457,13 @@ async function doUploadIndiv() {
     successEl.style.display = '';
     setTimeout(() => { successEl.style.display = 'none'; }, 4000);
   } catch (e) {
-    // Fallback: salva localmente se Drive não disponível
-    if (indivFileReady) s.hasDrawing = true;
+    // Upload do desenho falhou: NÃO marca como enviado (antes marcava e o
+    // desenho "sumia" ao recarregar). O texto, se houver, ainda é salvo.
     if (text) s.storyText = text;
     if (s.hasDrawing || s.storyText) { s.status = 'done'; s.uploadedAt = new Date().toISOString(); }
     localStorage.setItem('em_students', JSON.stringify(students));
     await syncStudentToServer(s);
-    successEl.textContent = e.message.includes('503') || e.message.includes('não configurado')
-      ? '⚠ Google Drive não configurado — salvo localmente'
-      : '⚠ ' + e.message + ' — salvo localmente';
+    successEl.textContent = '⚠ Desenho NÃO enviado: ' + (e.uploadFailed ? e.message : 'sem conexão com o servidor') + (text ? ' (o texto foi salvo)' : '') + '. Tente de novo.';
     successEl.style.display = '';
     successEl.style.background = '#fef3c7'; successEl.style.color = '#92400e';
     setTimeout(() => { successEl.style.display = 'none'; successEl.style.background = ''; successEl.style.color = ''; }, 5000);
@@ -1502,11 +1515,13 @@ async function doUploadLote() {
     formData.append('turma', selectedStudent.turma);
     formData.append('unitName', u ? u.name : selectedStudent.unit);
     formData.append('studentIds', JSON.stringify(ids));
+    formData.append('studentNames', JSON.stringify(loteFiles.map((f, i) => i < turmaStudents.length ? turmaStudents[i].name : '')));
+    formData.append('unit', selectedStudent.unit);
 
     const res = await fetch('/api/upload-batch', { method: 'POST', body: formData });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
 
-    if (data.success) {
+    if (res.ok && data.success) {
       // Casa cada arquivo ao aluno pelo studentId retornado pelo servidor
       // (e não pela posição) — evita marcar/atribuir ao aluno errado.
       const byId = {};
@@ -1522,28 +1537,19 @@ async function doUploadLote() {
         }
       });
       localStorage.setItem('em_students', JSON.stringify(students));
-      for (const st of turmaStudents) { await syncStudentToServer(st); }
+      // Só sincroniza quem recebeu arquivo — antes regravava a turma inteira com
+      // os dados locais (podia apagar texto/desenho salvo por outra pessoa).
+      for (const f of data.files) { const st = byId[f.studentId]; if (st) await syncStudentToServer(st); }
       el.textContent = `✓ ${data.uploaded} desenho(s) enviados — turma ${selectedStudent.turma}`;
       el.style.display = '';
     } else {
-      throw new Error(data.error);
+      throw new Error(res.status === 401 ? 'Sua sessão expirou. Saia e entre de novo'
+        : res.status === 413 ? 'Arquivos grandes demais — envie em lotes menores'
+        : (data.error || ('HTTP ' + res.status)));
     }
   } catch (e) {
-    // Fallback local
-    let matched = 0;
-    loteFiles.forEach((f, i) => {
-      if (i < turmaStudents.length) {
-        turmaStudents[i].hasDrawing = true;
-        turmaStudents[i].status = 'done';
-        turmaStudents[i].uploadedAt = new Date().toISOString();
-        matched++;
-      }
-    });
-    localStorage.setItem('em_students', JSON.stringify(students));
-    for (const st of turmaStudents) { await syncStudentToServer(st); }
-    el.textContent = e.message.includes('503') || e.message.includes('não configurado')
-      ? `⚠ Google Drive não configurado — ${matched} arquivo(s) salvos localmente`
-      : `⚠ ${e.message} — ${matched} arquivo(s) salvos localmente`;
+    // Falhou: NÃO marca ninguém como "com desenho" (antes marcava e sumia depois).
+    el.textContent = `⚠ Desenhos NÃO enviados: ${e.message || 'sem conexão com o servidor'}. Tente de novo.`;
     el.style.display = '';
     el.style.background = '#fef3c7'; el.style.color = '#92400e';
     setTimeout(() => { el.style.background = ''; el.style.color = ''; }, 5000);

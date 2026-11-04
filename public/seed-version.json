@@ -1,5 +1,5 @@
 {
-  "version": "2026-11-03-coc-lauro-salas",
-  "updatedAt": "2026-11-03",
-  "note": "COC Lauro de Freitas: turmas separadas por sala conforme SISED (ex: 1º Ano A/B/C). +2 alunos: Miguel Cardoso São Pedro (1º Ano C), Bruno Miguel Oliveira Freire (2º Ano A). Correções de série: Endrick (Grupo 4 A), Melyssa (Grupo 4 B), Pedro Rodrigo (1º Ano C), José Anthony (5º Ano A). Grafia: Felipe Novaes Santos."
+  "version": "2026-11-04-ped-pituba-ajustes",
+  "updatedAt": "2026-11-04",
+  "note": "PED Pituba: Lucas Lopes Pimentel Grupo 1 A -> Grupo 2 A; Luih Lima Sales de Oliveira Grupo 4 A -> Grupo 3 A; removidos Bryan Silva Conceição e Heitor Ritchel (5º Ano B — são do COC Horto, cadastrados por engano na Pituba)."
 }
