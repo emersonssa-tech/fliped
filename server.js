@@ -116,6 +116,7 @@ async function initData() {
   professorsData = await readJsonOrAbort(PROFESSORS_FILE, [], 'professors.json');
   studentsData = await readJsonOrAbort(STUDENTS_FILE, {}, 'students.json');
   teachersData = await readJsonOrAbort(TEACHERS_FILE, {}, 'teachers.json');
+  await normalizeStudentKeys();
   console.log(`Dados carregados: ${professorsData.length} professores, ${Object.keys(studentsData).length} alunos, ${Object.keys(teachersData).length} turmas com professor(a)`);
 }
 
@@ -143,6 +144,54 @@ function studentKey(unit, turma, name) {
       .replace(/[\u00ba\u00b0]/g, 'o').replace(/\u00aa/g, 'a')
       .trim().toLowerCase().replace(/\s+/g, ' ')
   ).join('|');
+}
+
+// Funde registros cuja chave antiga não era normalizada (ex.: "jordão" gravado
+// antes de 2026-05 e "jordao" gravado depois). Os dois viravam o MESMO aluno na
+// tela e o registro velho sobrescrevia o novo — o desenho "sumia" ao recarregar.
+// Regra: desenho vale se qualquer um tiver; texto = o mais recente não vazio;
+// demais campos = o registro mais recente.
+function mergeStudentRecords(recs) {
+  const sorted = recs.slice().sort((a, b) => String(a.updatedAt || '').localeCompare(String(b.updatedAt || '')));
+  let out = {};
+  for (const r of sorted) out = { ...out, ...r };
+  const withDrawing = sorted.filter(r => r.hasDrawing);
+  if (withDrawing.length) {
+    const d = withDrawing[withDrawing.length - 1];
+    out.hasDrawing = true;
+    out.driveLink = d.driveLink || sorted.map(r => r.driveLink).filter(Boolean).pop() || '';
+    out.driveFileId = d.driveFileId || sorted.map(r => r.driveFileId).filter(Boolean).pop() || '';
+    if (d.uploadedAt) out.uploadedAt = d.uploadedAt;
+  }
+  const withText = sorted.filter(r => r.storyText);
+  if (withText.length) {
+    const t = withText[withText.length - 1];
+    out.storyText = t.storyText;
+    if (t.textReviewed !== undefined) out.textReviewed = t.textReviewed;
+  }
+  return out;
+}
+async function normalizeStudentKeys() {
+  const groups = new Map();
+  let needs = false;
+  for (const [k, v] of Object.entries(studentsData)) {
+    if (!v || !v.unit || !v.turma || !v.name) { groups.set(k, [v]); continue; }
+    const nk = studentKey(v.unit, v.turma, v.name);
+    if (nk !== k) needs = true;
+    if (!groups.has(nk)) groups.set(nk, []);
+    groups.get(nk).push(v);
+  }
+  if (!needs) return;
+  const next = {};
+  let merged = 0;
+  for (const [nk, recs] of groups) {
+    next[nk] = recs.length === 1 ? recs[0] : mergeStudentRecords(recs);
+    if (recs.length > 1) merged++;
+  }
+  try { await fsp.copyFile(STUDENTS_FILE, `${STUDENTS_FILE}.bak-normalize-${Date.now()}`); } catch (_) {}
+  console.log(`Chaves de alunos normalizadas: ${Object.keys(studentsData).length} -> ${Object.keys(next).length} (${merged} fundidos)`);
+  studentsData = next;
+  await atomicWriteJson(STUDENTS_FILE, studentsData);
 }
 
 function loadStudentData() { return studentsData; }

@@ -756,7 +756,11 @@ async function syncStudentsFromServer() {
       students = students.filter(s => !removedKeys.has(studentKey(s)));
       if (students.length !== before) { changed = true; byKey.clear(); students.forEach(s => byKey.set(studentKey(s), s)); }
     }
-    Object.values(serverData).forEach(sv => {
+    // Mais antigo primeiro: se duas chaves do servidor caem no mesmo aluno, vale a mais nova.
+    const drawSeen = new Set();
+    const ordered = Object.values(serverData).filter(Boolean)
+      .sort((a, b) => String(a.updatedAt || '').localeCompare(String(b.updatedAt || '')));
+    ordered.forEach(sv => {
       if (!sv || !sv.unit || !sv.turma || !sv.name || sv.removed) return;
       const k = studentKey(sv);
       let s = byKey.get(k);
@@ -767,8 +771,12 @@ async function syncStudentsFromServer() {
         changed = true;
       }
       FIELDS.forEach(f => {
-        if (sv[f] !== undefined && s[f] !== sv[f]) { s[f] = sv[f]; changed = true; }
+        if (sv[f] === undefined || s[f] === sv[f]) return;
+        // registro sem desenho/link não apaga desenho já recebido de outro registro do mesmo aluno
+        if ((f === 'hasDrawing' && !sv[f] && drawSeen.has(s)) || ((f === 'driveLink' || f === 'driveFileId') && !sv[f] && drawSeen.has(s))) return;
+        s[f] = sv[f]; changed = true;
       });
+      if (sv.hasDrawing) drawSeen.add(s);
     });
     if (changed) save();
     return changed;
